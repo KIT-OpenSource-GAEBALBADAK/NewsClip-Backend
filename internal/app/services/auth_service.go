@@ -5,6 +5,7 @@ import (
 	"newsclip/backend/internal/app/models"
 	"newsclip/backend/internal/app/repositories"
 	"newsclip/backend/internal/app/utils"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -110,5 +111,52 @@ func LoginUser(req LoginRequest) (LoginResponse, error) {
 	response.AccessToken = accessToken
 	response.RefreshToken = refreshToken
 
+	return response, nil
+}
+
+// === [추가] Refresh Token 재발급 ===
+
+func RefreshTokens(refreshToken string) (LoginResponse, error) {
+	var response LoginResponse
+
+	// 1. Refresh Token 으로 세션 조회
+	session, err := repositories.FindSessionByToken(refreshToken)
+	if err != nil {
+		return response, errors.New("유효하지 않은 Refresh Token 입니다.")
+	}
+
+	// 2. 만료 검증
+	if time.Now().After(session.ExpiresAt) {
+		return response, errors.New("Refresh Token 이 만료되었습니다. 다시 로그인 해주세요.")
+	}
+
+	// 3. 유저 정보 조회
+	user, err := repositories.FindUserByID(session.UserID)
+	if err != nil {
+		return response, errors.New("유저 정보를 찾을 수 없습니다.")
+	}
+
+	// 4. Access Token 재발급
+	newAccess, err := utils.GenerateAccessToken(user.ID, user.Username)
+	if err != nil {
+		return response, errors.New("Access Token 생성 실패")
+	}
+
+	// 5. Refresh Token 재발급 (Token Rotation)
+	newRefresh, newExp, err := utils.GenerateRefreshToken(user.ID)
+	if err != nil {
+		return response, errors.New("Refresh Token 생성 실패")
+	}
+
+	// 6. 세션 DB 갱신
+	session.RefreshToken = newRefresh
+	session.ExpiresAt = newExp
+	if err := repositories.UpdateSession(&session); err != nil {
+		return response, errors.New("세션 갱신 실패")
+	}
+
+	// 7. 반환 DTO 구성
+	response.AccessToken = newAccess
+	response.RefreshToken = newRefresh
 	return response, nil
 }

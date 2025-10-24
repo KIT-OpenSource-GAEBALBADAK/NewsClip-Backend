@@ -16,6 +16,7 @@ func SetupRouter() *gin.Engine {
 		{
 			auth.POST("/register", controllers.Register)
 			auth.POST("/login", controllers.Login)
+			auth.POST("/refresh", controllers.RefreshToken)
 			// 여기에 /login, /social, /refresh 라우트도 추가될 예정
 		}
 	}
