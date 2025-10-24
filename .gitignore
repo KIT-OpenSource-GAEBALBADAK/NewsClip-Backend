@@ -1,0 +1,61 @@
+# =========================================
+# Environment variables
+# ‼️ 절대 Git에 올리면 안 되는 민감 정보 파일입니다.
+# =========================================
+.env
+.env.*
+!.env.example
+
+
+# =========================================
+# Compiled binaries and packages
+# =========================================
+# Go 빌드 결과물 (실행 파일)
+# Windows
+*.exe
+*.exe~
+# Mac & Linux
+backend
+*.out
+
+
+# =========================================
+# Log files
+# =========================================
+*.log
+*.log.*
+
+
+# =========================================
+# IDE & Editor configurations
+# =========================================
+# Visual Studio Code
+.vscode/
+# GoLand / IntelliJ
+.idea/
+# Vim
+*.swp
+*.swo
+# Sublime Text
+*.sublime-*
+
+
+# =========================================
+# OS generated files
+# =========================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+
+# =========================================
+# Go-specific
+# =========================================
+# Test coverage files
+coverage.out
+/vendor/

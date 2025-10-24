@@ -16,7 +16,7 @@ Go 언어(Gin 프레임워크)를 기반으로 제작된 RESTful API 서버입�
 
 | 항목 | 내용 |
 |------|------|
-| Go Version | **1.22.2** |
+| Go Version | **1.24.9** |
 | Framework | **Gin Web Framework** |
 | Database | **PostgreSQL 15+** |
 | ORM | **GORM v2** |
