@@ -5,10 +5,19 @@ import (
 	"newsclip/backend/internal/app/models"
 )
 
-// 세션(Refresh Token)을 생성합니다.
+// 세션 생성
 func CreateSession(session *models.Session) error {
-	result := config.DB.Create(session)
-	return result.Error
+	return config.DB.Create(session).Error
 }
 
-// (참고) 나중에 리프레시 토큰으로 세션을 찾거나 삭제하는 함수도 여기에 추가됩니다.
+// RefreshToken 으로 세션 조회
+func FindSessionByToken(token string) (models.Session, error) {
+	var session models.Session
+	result := config.DB.Where("refresh_token = ?", token).First(&session)
+	return session, result.Error
+}
+
+// 세션 업데이트 (RefreshToken 재발급 시 갱신)
+func UpdateSession(session *models.Session) error {
+	return config.DB.Save(session).Error
+}

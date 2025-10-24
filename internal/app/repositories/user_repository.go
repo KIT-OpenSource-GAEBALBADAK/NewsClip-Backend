@@ -5,15 +5,21 @@ import (
 	"newsclip/backend/internal/app/models"
 )
 
-// username으로 유저를 찾습니다.
+// username으로 유저 조회
 func FindUserByUsername(username string) (models.User, error) {
 	var user models.User
 	result := config.DB.Where("username = ?", username).First(&user)
 	return user, result.Error
 }
 
-// 유저를 생성합니다.
+// userID로 유저 조회 (Refresh 시 필요)
+func FindUserByID(id uint) (models.User, error) {
+	var user models.User
+	result := config.DB.First(&user, id)
+	return user, result.Error
+}
+
+// 유저 생성
 func CreateUser(user *models.User) error {
-	result := config.DB.Create(user)
-	return result.Error
+	return config.DB.Create(user).Error
 }
