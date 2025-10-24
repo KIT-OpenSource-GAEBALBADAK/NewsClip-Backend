@@ -35,3 +35,35 @@ func Register(c *gin.Context) {
 		"data":    gin.H{"user": user},
 	})
 }
+
+// === [추가] ===
+
+// Login 컨트롤러
+func Login(c *gin.Context) {
+	var req services.LoginRequest
+	// 요청 바인딩
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.SendError(c, http.StatusBadRequest, "잘못된 요청 형식입니다.")
+		return
+	}
+
+	// 서비스 호출
+	response, err := services.LoginUser(req)
+	if err != nil {
+		// 유저가 없거나 비밀번호가 틀린 경우
+		if err.Error() == "아이디 또는 비밀번호가 일치하지 않습니다." {
+			utils.SendError(c, http.StatusUnauthorized, err.Error())
+			return
+		}
+		// 기타 서버 에러
+		utils.SendError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// API 명세서에 맞게 성공 응답 (200 OK)
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "로그인 성공",
+		"data":    response, // { "accessToken": "...", "refreshToken": "..." }
+	})
+}
