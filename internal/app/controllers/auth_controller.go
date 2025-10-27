@@ -80,12 +80,36 @@ func SocialLogin(c *gin.Context) {
 	response, err := services.ProcessSocialLogin(req)
 	if err != nil {
 		utils.SendError(c, http.StatusInternalServerError, err.Error())
+    		return
+	}
+  
+  	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "소셜 로그인 성공",
+		"data":    response,
+	})
+}
+    
+// === [추가] Refresh Token 재발급 ===
+func RefreshToken(c *gin.Context) {
+	var req struct {
+		RefreshToken string `json:"refreshToken" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.SendError(c, http.StatusBadRequest, "Refresh Token 이 필요합니다.")
+		return
+	}
+
+	response, err := services.RefreshTokens(req.RefreshToken)
+	if err != nil {
+		utils.SendError(c, http.StatusUnauthorized, err.Error())
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
-		"message": "소셜 로그인 성공",
+		"message": "토큰 재발급 성공",
 		"data":    response,
 	})
 }
