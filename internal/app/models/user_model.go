@@ -16,6 +16,10 @@ type User struct {
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 
+	// === [추가] 소셜 로그인 정보 ===
+	Provider   *string `gorm:"type:varchar(50)" json:"provider"`  // 예: "kakao", "google"
+	ProviderID *string `gorm:"type:varchar(255);unique" json:"-"` // 소셜 서비스의 유저 고유 ID
+
 	// 관계 설정 (User가 소유한 것들)
 	UserSetting   UserSetting    `gorm:"foreignKey:UserID" json:"-"`
 	Sessions      []Session      `gorm:"foreignKey:UserID" json:"-"`

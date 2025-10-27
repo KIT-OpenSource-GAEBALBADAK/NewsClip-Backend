@@ -67,3 +67,25 @@ func Login(c *gin.Context) {
 		"data":    response, // { "accessToken": "...", "refreshToken": "..." }
 	})
 }
+
+// === [추가] ===
+
+func SocialLogin(c *gin.Context) {
+	var req services.SocialLoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.SendError(c, http.StatusBadRequest, "잘못된 요청 형식입니다.")
+		return
+	}
+
+	response, err := services.ProcessSocialLogin(req)
+	if err != nil {
+		utils.SendError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "소셜 로그인 성공",
+		"data":    response,
+	})
+}
