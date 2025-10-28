@@ -1,7 +1,11 @@
 package services
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net/http"
 	"newsclip/backend/internal/app/models"
 	"newsclip/backend/internal/app/repositories"
 	"newsclip/backend/internal/app/utils"
@@ -114,6 +118,126 @@ func LoginUser(req LoginRequest) (LoginResponse, error) {
 	return response, nil
 }
 
+// === [추가] ===
+
+// 소셜 로그인 요청 DTO
+type SocialLoginRequest struct {
+	Provider string `json:"provider" binding:"required"`
+	Token    string `json:"token" binding:"required"`
+}
+
+// 카카오 유저 정보 응답 DTO
+type KakaoUserResponse struct {
+	ID           int64 `json:"id"`
+	KakaoAccount struct {
+		Profile struct {
+			Nickname        string `json:"nickname"`
+			ProfileImageURL string `json:"profile_image_url"`
+		} `json:"profile"`
+	} `json:"kakao_account"`
+}
+
+// 카카오 서버에 유저 정보 요청
+func getKakaoUserInfo(token string) (*KakaoUserResponse, error) {
+	req, err := http.NewRequest("GET", "https://kapi.kakao.com/v2/user/me", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Authorization", "Bearer "+token)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("카카오 서버 에러: %s", string(body))
+	}
+
+	var kakaoUser KakaoUserResponse
+	if err := json.Unmarshal(body, &kakaoUser); err != nil {
+		return nil, err
+	}
+
+	return &kakaoUser, nil
+}
+
+// 소셜 로그인 전체 로직
+func ProcessSocialLogin(req SocialLoginRequest) (LoginResponse, error) {
+	var response LoginResponse
+	var user models.User
+	var err error
+
+	if req.Provider == "kakao" {
+		kakaoUser, err := getKakaoUserInfo(req.Token)
+		if err != nil {
+			return response, err
+		}
+
+		providerID := fmt.Sprintf("%d", kakaoUser.ID)
+
+		// 1. 이미 가입된 유저인지 확인
+		user, err = repositories.FindUserBySocial(req.Provider, providerID)
+
+		// 2. 가입되지 않은 유저라면, 새로 생성 (회원가입)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+
+			provider := "kakao"
+			pID := providerID
+
+			newUser := models.User{
+				Name:         kakaoUser.KakaoAccount.Profile.Nickname, // 실명 대신 닉네임 사용
+				Nickname:     kakaoUser.KakaoAccount.Profile.Nickname,
+				ProfileImage: kakaoUser.KakaoAccount.Profile.ProfileImageURL,
+				Provider:     &provider,
+				ProviderID:   &pID,
+			}
+
+			if err := repositories.CreateUser(&newUser); err != nil {
+				return response, err
+			}
+			user = newUser
+		} else if err != nil {
+			return response, err // 기타 DB 에러
+		}
+
+	} else {
+		return response, errors.New("지원하지 않는 소셜 로그인입니다.")
+	}
+
+	// 3. 우리 서비스의 JWT 토큰 발급
+	accessToken, err := utils.GenerateAccessToken(user.ID, user.Username)
+	if err != nil {
+		return response, err
+	}
+
+	refreshToken, expiresAt, err := utils.GenerateRefreshToken(user.ID)
+	if err != nil {
+		return response, err
+	}
+
+	session := models.Session{
+		UserID:       user.ID,
+		RefreshToken: refreshToken,
+		ExpiresAt:    expiresAt,
+	}
+	if err := repositories.CreateSession(&session); err != nil {
+		return response, err
+	}
+
+	response.AccessToken = accessToken
+	response.RefreshToken = refreshToken
+
+  return response, nil
+}
 // === [추가] Refresh Token 재발급 ===
 
 func RefreshTokens(refreshToken string) (LoginResponse, error) {
