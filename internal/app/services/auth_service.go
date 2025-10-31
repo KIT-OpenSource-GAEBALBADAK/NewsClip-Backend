@@ -14,21 +14,22 @@ import (
 	"gorm.io/gorm"
 )
 
-// 회원가입 요청 DTO (Data Transfer Object)
+// === [수정] 회원가입 요청 DTO === 25/10/31
 type RegisterRequest struct {
-	Name     string `json:"name" binding:"required"`
+	// Name     string `json:"name" binding:"required"` // 삭제
 	Username string `json:"username" binding:"required"`
 	Password string `json:"password" binding:"required"`
-	Nickname string `json:"nickname" binding:"required"`
+	// Nickname string `json:"nickname" binding:"required"` // 삭제
 }
 
+// === [수정] 회원가입 로직 === 25/10/31
 func RegisterUser(req RegisterRequest) (models.User, error) {
 	// 1. username 중복 체크
 	_, err := repositories.FindUserByUsername(req.Username)
-	if err == nil { // 에러가 없으면 유저가 존재한다는 의미
+	if err == nil {
 		return models.User{}, errors.New("이미 사용 중인 아이디입니다.")
 	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) { // 다른 DB 에러일 경우
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return models.User{}, err
 	}
 
@@ -38,13 +39,16 @@ func RegisterUser(req RegisterRequest) (models.User, error) {
 		return models.User{}, err
 	}
 
-	// 3. 유저 모델 생성
+	// 3. 유저 모델 생성 (Nickname, ProfileImage는 nil)
+	// model에서 포인터 타입이므로, 변수에 담아서 주소를 넘겨줌
+	username := req.Username
+	pwhash := hashedPassword
+
 	newUser := models.User{
-		Name:         req.Name,
-		Username:     req.Username,
-		PasswordHash: hashedPassword,
-		Nickname:     req.Nickname,
-		ProfileImage: "https://newsclip.duckdns.org/v1/images/default_profile.png", // 기본 프로필
+		Username:     &username,
+		PasswordHash: &pwhash,
+		// Nickname, ProfileImage는 기본값(NULL)
+		// Name 필드 삭제됨
 	}
 
 	// 4. DB에 유저 생성
@@ -72,7 +76,7 @@ type LoginResponse struct {
 	RefreshToken string `json:"refreshToken"`
 }
 
-// 로그인 로직 처리
+// === [수정] 로그인 로직 === 25/10/31
 func LoginUser(req LoginRequest) (LoginResponse, error) {
 	var response LoginResponse
 
@@ -82,17 +86,24 @@ func LoginUser(req LoginRequest) (LoginResponse, error) {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return response, errors.New("아이디 또는 비밀번호가 일치하지 않습니다.")
 		}
-		return response, err // 기타 DB 에러
+		return response, err
 	}
 
-	// 2. 비밀번호 검증
-	isValidPassword := utils.CheckPasswordHash(req.Password, user.PasswordHash)
+	// 2. 비밀번호 검증 (소셜 로그인 유저는 PasswordHash가 nil일 수 있음)
+	if user.PasswordHash == nil {
+		return response, errors.New("아이디 또는 비밀번호가 일치하지 않습니다.")
+	}
+	isValidPassword := utils.CheckPasswordHash(req.Password, *user.PasswordHash)
 	if !isValidPassword {
 		return response, errors.New("아이디 또는 비밀번호가 일치하지 않습니다.")
 	}
 
-	// 3. Access Token 생성
-	accessToken, err := utils.GenerateAccessToken(user.ID, user.Username)
+	// 3. Access Token 생성 (Nickname이 nil일 수 있음)
+	var nickname string
+	if user.Nickname != nil {
+		nickname = *user.Nickname
+	}
+	accessToken, err := utils.GenerateAccessToken(user.ID, nickname)
 	if err != nil {
 		return response, errors.New("토큰 생성에 실패했습니다.")
 	}
@@ -170,7 +181,7 @@ func getKakaoUserInfo(token string) (*KakaoUserResponse, error) {
 	return &kakaoUser, nil
 }
 
-// 소셜 로그인 전체 로직
+// === [수정] 소셜 로그인 전체 로직 ===
 func ProcessSocialLogin(req SocialLoginRequest) (LoginResponse, error) {
 	var response LoginResponse
 	var user models.User
@@ -187,18 +198,15 @@ func ProcessSocialLogin(req SocialLoginRequest) (LoginResponse, error) {
 		// 1. 이미 가입된 유저인지 확인
 		user, err = repositories.FindUserBySocial(req.Provider, providerID)
 
-		// 2. 가입되지 않은 유저라면, 새로 생성 (회원가입)
+		// 2. 가입되지 않은 유저라면, 새로 생성 (Nickname, ProfileImage는 NULL)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-
 			provider := "kakao"
 			pID := providerID
 
 			newUser := models.User{
-				Name:         kakaoUser.KakaoAccount.Profile.Nickname, // 실명 대신 닉네임 사용
-				Nickname:     kakaoUser.KakaoAccount.Profile.Nickname,
-				ProfileImage: kakaoUser.KakaoAccount.Profile.ProfileImageURL,
-				Provider:     &provider,
-				ProviderID:   &pID,
+				Provider:   &provider,
+				ProviderID: &pID,
+				// Name, Nickname, ProfileImage 모두 NULL
 			}
 
 			if err := repositories.CreateUser(&newUser); err != nil {
@@ -206,24 +214,28 @@ func ProcessSocialLogin(req SocialLoginRequest) (LoginResponse, error) {
 			}
 			user = newUser
 		} else if err != nil {
-			return response, err // 기타 DB 에러
+			return response, err
 		}
 
 	} else {
 		return response, errors.New("지원하지 않는 소셜 로그인입니다.")
 	}
 
-	// 3. 우리 서비스의 JWT 토큰 발급
-	accessToken, err := utils.GenerateAccessToken(user.ID, user.Username)
+	// 3. 우리 서비스의 JWT 토큰 발급 (Nickname이 nil일 수 있음)
+	var nickname string
+	if user.Nickname != nil {
+		nickname = *user.Nickname
+	}
+	accessToken, err := utils.GenerateAccessToken(user.ID, nickname)
 	if err != nil {
 		return response, err
 	}
 
+	// 4. Refresh Token 생성 및 세션 저장
 	refreshToken, expiresAt, err := utils.GenerateRefreshToken(user.ID)
 	if err != nil {
 		return response, err
 	}
-
 	session := models.Session{
 		UserID:       user.ID,
 		RefreshToken: refreshToken,
@@ -236,10 +248,10 @@ func ProcessSocialLogin(req SocialLoginRequest) (LoginResponse, error) {
 	response.AccessToken = accessToken
 	response.RefreshToken = refreshToken
 
-  return response, nil
+	return response, nil
 }
-// === [추가] Refresh Token 재발급 ===
 
+// === [수정] Refresh Token 재발급 ===
 func RefreshTokens(refreshToken string) (LoginResponse, error) {
 	var response LoginResponse
 
@@ -260,8 +272,12 @@ func RefreshTokens(refreshToken string) (LoginResponse, error) {
 		return response, errors.New("유저 정보를 찾을 수 없습니다.")
 	}
 
-	// 4. Access Token 재발급
-	newAccess, err := utils.GenerateAccessToken(user.ID, user.Username)
+	// 4. Access Token 재발급 (Nickname nil 처리)
+	var nickname string
+	if user.Nickname != nil {
+		nickname = *user.Nickname
+	}
+	newAccess, err := utils.GenerateAccessToken(user.ID, nickname)
 	if err != nil {
 		return response, errors.New("Access Token 생성 실패")
 	}
@@ -283,4 +299,45 @@ func RefreshTokens(refreshToken string) (LoginResponse, error) {
 	response.AccessToken = newAccess
 	response.RefreshToken = newRefresh
 	return response, nil
+}
+
+// === [신규] 아이디 중복 체크 ===
+type CheckUsernameRequest struct {
+	Username string `json:"username" binding:"required"`
+}
+
+func CheckUsernameAvailability(req CheckUsernameRequest) (bool, error) {
+	_, err := repositories.FindUserByUsername(req.Username)
+	if err == nil { // 유저가 존재함
+		return false, nil
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) { // 유저가 존재하지 않음
+		return true, nil
+	}
+	return false, err // 기타 DB 에러
+}
+
+// === [신규] 최초 프로필 설정 ===
+// (컨트롤러에서 파일 처리 후 imageURL을 받아옴)
+func SetupProfile(userID uint, nickname string, imageURL string) (models.User, error) {
+	// 1. 유저 정보 가져오기
+	user, err := repositories.FindUserByID(userID)
+	if err != nil {
+		return user, errors.New("유저를 찾을 수 없습니다.")
+	}
+
+	// 2. 이미 설정했는지 확인
+	if user.Nickname != nil {
+		return user, errors.New("이미 프로필이 설정되었습니다.")
+	}
+
+	// 3. DB 업데이트
+	err = repositories.UpdateUserProfile(&user, nickname, imageURL)
+	if err != nil {
+		return user, errors.New("프로필 업데이트에 실패했습니다.")
+	}
+
+	user.Nickname = &nickname
+	user.ProfileImage = &imageURL
+	return user, nil
 }

@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"errors"
 	"newsclip/backend/config"
 	"time"
 
@@ -10,21 +11,20 @@ import (
 // JWT 서명에 사용할 비밀키
 var jwtSecretKey = []byte(config.GetEnv("JWT_SECRET_KEY"))
 
-// JWT Claims 정의
+// === [수정] JWT Claims 정의 ===
 type JwtClaims struct {
 	UserID   uint   `json:"user_id"`
-	Username string `json:"username"`
+	Nickname string `json:"nickname"` // [추가] Nickname 필드
 	jwt.RegisteredClaims
 }
 
-// Access Token 생성
-func GenerateAccessToken(userID uint, username string) (string, error) {
-	// Access Token 만료 시간 (예: 1시간)
+// === [수정] Access Token 생성 (username -> nickname) ===
+func GenerateAccessToken(userID uint, nickname string) (string, error) {
 	expirationTime := time.Now().Add(1 * time.Hour)
 
 	claims := &JwtClaims{
 		UserID:   userID,
-		Username: username,
+		Nickname: nickname, // [추가] Nickname 값 할당
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expirationTime),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -37,11 +37,11 @@ func GenerateAccessToken(userID uint, username string) (string, error) {
 
 // Refresh Token 생성
 func GenerateRefreshToken(userID uint) (string, time.Time, error) {
-	// Refresh Token 만료 시간 (예: 7일)
-	expirationTime := time.Now().Add(168 * time.Hour) // 24 * 7
+	expirationTime := time.Now().Add(168 * time.Hour) // 7일
 
 	claims := &JwtClaims{
 		UserID: userID,
+		// Nickname은 Refresh 토큰에 필수는 아님
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expirationTime),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -55,4 +55,23 @@ func GenerateRefreshToken(userID uint) (string, time.Time, error) {
 	}
 
 	return tokenString, expirationTime, nil
+}
+
+// [추가] Token 검증 (auth_middleware.go가 사용)
+func ValidateToken(tokenString string) (*JwtClaims, error) {
+	claims := &JwtClaims{}
+
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		return jwtSecretKey, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	if !token.Valid {
+		return nil, errors.New("유효하지 않은 토큰")
+	}
+
+	return claims, nil
 }
