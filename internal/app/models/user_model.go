@@ -7,11 +7,11 @@ import (
 // User: 사용자 기본 정보 (users)
 type User struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`
-	Username     string    `gorm:"type:varchar(30);unique;not null" json:"username"`
-	PasswordHash string    `gorm:"type:text;not null" json:"-"`
-	Name         string    `gorm:"type:varchar(50);not null" json:"name"`
-	Nickname     string    `gorm:"type:varchar(30)" json:"nickname"`
-	ProfileImage string    `gorm:"type:text" json:"profile_image"`
+	Username     *string   `gorm:"type:varchar(30);unique" json:"username"`      // [수정] 포인터 타입
+	PasswordHash *string   `gorm:"type:text" json:"-"`                           // [수정] 포인터 타입
+	// Name 필드 삭제
+	Nickname     *string   `gorm:"type:varchar(30)" json:"nickname"`          // [수정] 포인터 타입
+	ProfileImage *string   `gorm:"type:text" json:"profile_image"`          // [수정] 포인터 타입
 	Role         string    `gorm:"type:varchar(20);default:'user'" json:"role"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
