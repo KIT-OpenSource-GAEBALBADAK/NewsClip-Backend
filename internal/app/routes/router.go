@@ -15,6 +15,10 @@ func SetupRouter() *gin.Engine {
 	// ./uploads/profiles/1_image.png 파일을 서빙
 	router.Static("/v1/uploads", "./uploads")
 
+	// (추가) 정적 자산(기본 이미지 등) 서빙
+	// URL /v1/images/ 로 오는 요청을 ./static/images/ 디렉토리와 연결
+	router.Static("/v1/images", "./static/images")
+
 	// API V1 그룹
 	v1 := router.Group("/v1")
 	{
