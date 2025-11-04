@@ -35,6 +35,9 @@ func SetupRouter() *gin.Engine {
 			// AuthMiddleware()가 먼저 실행되어 토큰을 검증
 			auth.POST("/setup-profile", middlewares.AuthMiddleware(), controllers.SetupProfile)
 		}
+
+		// ✅ 내 프로필 조회 추가
+		v1.GET("/me", middlewares.AuthMiddleware(), controllers.GetMyProfile)
 	}
 
 	return router
