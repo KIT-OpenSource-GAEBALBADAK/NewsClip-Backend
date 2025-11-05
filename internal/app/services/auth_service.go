@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"newsclip/backend/config"
 	"newsclip/backend/internal/app/models"
 	"newsclip/backend/internal/app/repositories"
 	"newsclip/backend/internal/app/utils"
@@ -148,6 +149,15 @@ type KakaoUserResponse struct {
 	} `json:"kakao_account"`
 }
 
+// [신규] (구글) 25/11/04
+type GoogleUserResponse struct {
+	Sub      string `json:"sub"`     // 구글 유저 고유 ID
+	Audience string `json:"aud"`     // 토큰 발급 대상 (우리 앱 Client ID)
+	Email    string `json:"email"`   // (참고용)
+	Name     string `json:"name"`    // (참고용)
+	Picture  string `json:"picture"` // (참고용)
+}
+
 // 카카오 서버에 유저 정보 요청
 func getKakaoUserInfo(token string) (*KakaoUserResponse, error) {
 	req, err := http.NewRequest("GET", "https://kapi.kakao.com/v2/user/me", nil)
@@ -181,60 +191,105 @@ func getKakaoUserInfo(token string) (*KakaoUserResponse, error) {
 	return &kakaoUser, nil
 }
 
-// === [수정] 소셜 로그인 전체 로직 ===
+// === [신규] (구글) 유저 정보 요청 === 25/11/04
+// 구글은 ID Token을 검증하는 'tokeninfo' 엔드포인트를 사용합니다.
+func getGoogleUserInfo(token string) (*GoogleUserResponse, error) {
+	// 1. 구글 tokeninfo 엔드포인트에 GET 요청
+	resp, err := http.Get("https://oauth2.googleapis.com/tokeninfo?id_token=" + token)
+	if err != nil {
+		return nil, fmt.Errorf("구글 요청 실패: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("구글 응답 읽기 실패: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("구글 토큰 검증 에러: %s", string(body))
+	}
+
+	// 2. 응답 파싱
+	var googleUser GoogleUserResponse
+	if err := json.Unmarshal(body, &googleUser); err != nil {
+		return nil, fmt.Errorf("구글 응답 파싱 실패: %w", err)
+	}
+
+	// 3. [보안] Audience 검증 (이 토큰이 우리 앱에 발급된게 맞는지)
+	googleClientID := config.GetEnv("GOOGLE_CLIENT_ID")
+	if googleUser.Audience != googleClientID {
+		return nil, errors.New("유효하지 않은 구글 토큰입니다. (Audience 불일치)")
+	}
+
+	return &googleUser, nil
+}
+
+// === 소셜 로그인 전체 로직 함수 ===
+
 func ProcessSocialLogin(req SocialLoginRequest) (LoginResponse, error) {
 	var response LoginResponse
 	var user models.User
 	var err error
+	var providerID string // 카카오, 구글 ID를 담을 변수
 
+	// 1. Provider에 따라 분기
 	if req.Provider == "kakao" {
 		kakaoUser, err := getKakaoUserInfo(req.Token)
 		if err != nil {
 			return response, err
 		}
+		providerID = fmt.Sprintf("%d", kakaoUser.ID) // 카카오 ID
 
-		providerID := fmt.Sprintf("%d", kakaoUser.ID)
-
-		// 1. 이미 가입된 유저인지 확인
-		user, err = repositories.FindUserBySocial(req.Provider, providerID)
-
-		// 2. 가입되지 않은 유저라면, 새로 생성 (Nickname, ProfileImage는 NULL)
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			provider := "kakao"
-			pID := providerID
-
-			newUser := models.User{
-				Provider:   &provider,
-				ProviderID: &pID,
-				// Name, Nickname, ProfileImage 모두 NULL
-			}
-
-			if err := repositories.CreateUser(&newUser); err != nil {
-				return response, err
-			}
-			user = newUser
-		} else if err != nil {
+	} else if req.Provider == "google" {
+		googleUser, err := getGoogleUserInfo(req.Token)
+		if err != nil {
 			return response, err
 		}
+		providerID = googleUser.Sub // 구글 고유 ID는 'sub' 필드
 
 	} else {
 		return response, errors.New("지원하지 않는 소셜 로그인입니다.")
 	}
 
-	// 3. 우리 서비스의 JWT 토큰 발급 (Nickname이 nil일 수 있음)
+	// --- [이하 로직은 공통] ---
+
+	// 2. 이미 가입된 유저인지 확인
+	user, err = repositories.FindUserBySocial(req.Provider, providerID)
+
+	// 3. 가입되지 않은 유저라면, 새로 생성 (Nickname, ProfileImage는 NULL)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		provider := req.Provider // "kakao" 또는 "google"
+		pID := providerID
+
+		newUser := models.User{
+			Provider:   &provider,
+			ProviderID: &pID,
+			// Name, Nickname, ProfileImage 모두 NULL (최초 프로필 설정 필요)
+		}
+
+		if err := repositories.CreateUser(&newUser); err != nil {
+			return response, err
+		}
+		user = newUser
+	} else if err != nil {
+		return response, err // 기타 DB 에러
+	}
+
+	// 4. 우리 서비스의 JWT 토큰 발급 (Nickname이 nil일 수 있음)
 	var nickname string
 	if user.Nickname != nil {
 		nickname = *user.Nickname
 	}
 	accessToken, err := utils.GenerateAccessToken(user.ID, nickname)
 	if err != nil {
-		return response, err
+		return response, errors.New("토큰 생성에 실패했습니다.")
 	}
 
-	// 4. Refresh Token 생성 및 세션 저장
+	// 5. Refresh Token 생성 및 세션 저장
 	refreshToken, expiresAt, err := utils.GenerateRefreshToken(user.ID)
 	if err != nil {
-		return response, err
+		return response, errors.New("토큰 생성에 실패했습니다.")
 	}
 	session := models.Session{
 		UserID:       user.ID,
@@ -242,7 +297,7 @@ func ProcessSocialLogin(req SocialLoginRequest) (LoginResponse, error) {
 		ExpiresAt:    expiresAt,
 	}
 	if err := repositories.CreateSession(&session); err != nil {
-		return response, err
+		return response, errors.New("세션 저장에 실패했습니다.")
 	}
 
 	response.AccessToken = accessToken
