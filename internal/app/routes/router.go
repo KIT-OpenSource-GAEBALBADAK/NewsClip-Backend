@@ -38,6 +38,8 @@ func SetupRouter() *gin.Engine {
 
 		// ✅ 내 프로필 조회 추가
 		v1.GET("/me", middlewares.AuthMiddleware(), controllers.GetMyProfile)
+		// ✅ 내 프로필 수정
+		v1.POST("/me/avatar", middlewares.AuthMiddleware(), controllers.UpdateProfile)
 	}
 
 	return router
