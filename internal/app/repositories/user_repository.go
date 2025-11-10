@@ -75,3 +75,7 @@ func GetUserProfile(userID uint) (map[string]interface{}, error) {
 	return data, nil
 
 }
+
+func UpdateUserFields(user *models.User, fields map[string]interface{}) error {
+	return config.DB.Model(user).Updates(fields).Error
+}
