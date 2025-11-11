@@ -17,11 +17,11 @@ func MigrateDB() {
 		&models.UserSetting{},
 		&models.Session{},
 		&models.News{},
-		&models.NewsLike{},
+		// &models.NewsLike{},      // [삭제]
 		&models.NewsBookmark{},
 		&models.NewsComment{},
 		&models.Short{},
-		&models.ShortLike{},
+		// &models.ShortLike{},     // [삭제]
 		&models.ShortComment{},
 		&models.Post{},
 		&models.PostLike{},
@@ -30,6 +30,12 @@ func MigrateDB() {
 		&models.Notification{},
 		&models.Report{},
 		&models.Ban{},
+
+		// === [신규] ===
+		&models.UserPreferredCategory{},
+		&models.PostImage{},
+		&models.NewsInteraction{},
+		&models.ShortInteraction{},
 	)
 	if err != nil {
 		log.Fatal("Failed to migrate database")
