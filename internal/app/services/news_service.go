@@ -1,16 +1,33 @@
 package services
 
 import (
+	"html"
 	"log"
 	"net/http"
 	"newsclip/backend/internal/app/models"
 	"newsclip/backend/internal/app/repositories"
 	"newsclip/backend/pkg/navernews"
+	"regexp"
 	"sync"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
 )
+
+// === [신규] HTML 태그를 제거하기 위한 정규식 컴파일러 ===
+// (<...> 형태의 모든 태그를 찾음, 서버 시작 시 1회만 컴파일)
+var tagStripper = regexp.MustCompile("<[^>]*>")
+
+// === [신규] 문자열을 정리하는 헬퍼 함수 ===
+func cleanString(s string) string {
+	// 1. HTML 엔티티 디코딩 (예: &quot; -> ", &lt; -> <)
+	unescaped := html.UnescapeString(s)
+
+	// 2. HTML 태그 제거 (예: <b>...</b> -> ...)
+	stripped := tagStripper.ReplaceAllString(unescaped, "")
+
+	return stripped
+}
 
 // === 원문 URL에서 OG:IMAGE 태그를 추출하는 함수 ===
 func getOgpImage(url string) (string, error) {
@@ -84,12 +101,12 @@ func FetchAllCategories() error {
 	return nil
 }
 
-// === [수정] FetchAndStoreNews 함수 시그니처 ===
-// (query string) -> (query string, display int)
+// === [수정] FetchAndStoreNews 함수 ===
+// (cleanString 함수를 적용)
 func FetchAndStoreNews(query string, display int) error {
 	client := navernews.NewClient()
 
-	// 1. 네이버 API에서 뉴스 검색 (수정: 50 -> display)
+	// 1. 네이버 API에서 뉴스 검색
 	resp, err := client.SearchNews(query, display, 1)
 	if err != nil {
 		return err
@@ -110,14 +127,18 @@ func FetchAndStoreNews(query string, display int) error {
 
 		imageURL, err := getOgpImage(item.Originallink)
 		if err != nil {
-			// log.Printf("Failed to get image for %s: %v", item.Title, err) // 로그가 너무 많아질 수 있음
-			imageURL = "" // 실패 시 빈 문자열
+			imageURL = ""
 		}
+
+		// === [수정] 저장 전에 문자열 정리 ===
+		cleanTitle := cleanString(item.Title)
+		cleanDescription := cleanString(item.Description)
+		// =================================
 
 		newsToCreate = append(newsToCreate, models.News{
 			ExternalID: externalID,
-			Title:      item.Title,
-			Content:    item.Description,
+			Title:      cleanTitle,       // [수정]
+			Content:    cleanDescription, // [수정]
 			Source:     item.Originallink,
 			URL:        item.Link,
 			Category:   query,
