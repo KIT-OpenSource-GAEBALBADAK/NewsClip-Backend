@@ -28,7 +28,7 @@ func RegisterUser(req RegisterRequest) (models.User, error) {
 	// 1. username 중복 체크
 	_, err := repositories.FindUserByUsername(req.Username)
 	if err == nil {
-		return models.User{}, errors.New("이미 사용 중인 아이디입니다.")
+		return models.User{}, errors.New("이미 사용 중인 아이디입니다")
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return models.User{}, err
@@ -85,18 +85,18 @@ func LoginUser(req LoginRequest) (LoginResponse, error) {
 	user, err := repositories.FindUserByUsername(req.Username)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return response, errors.New("아이디 또는 비밀번호가 일치하지 않습니다.")
+			return response, errors.New("아이디 또는 비밀번호가 일치하지 않습니다")
 		}
 		return response, err
 	}
 
 	// 2. 비밀번호 검증 (소셜 로그인 유저는 PasswordHash가 nil일 수 있음)
 	if user.PasswordHash == nil {
-		return response, errors.New("아이디 또는 비밀번호가 일치하지 않습니다.")
+		return response, errors.New("아이디 또는 비밀번호가 일치하지 않습니다")
 	}
 	isValidPassword := utils.CheckPasswordHash(req.Password, *user.PasswordHash)
 	if !isValidPassword {
-		return response, errors.New("아이디 또는 비밀번호가 일치하지 않습니다.")
+		return response, errors.New("아이디 또는 비밀번호가 일치하지 않습니다")
 	}
 
 	// 3. Access Token 생성 (Nickname이 nil일 수 있음)
@@ -106,13 +106,13 @@ func LoginUser(req LoginRequest) (LoginResponse, error) {
 	}
 	accessToken, err := utils.GenerateAccessToken(user.ID, nickname)
 	if err != nil {
-		return response, errors.New("토큰 생성에 실패했습니다.")
+		return response, errors.New("토큰 생성에 실패했습니다")
 	}
 
 	// 4. Refresh Token 생성 및 DB 저장
 	refreshToken, expiresAt, err := utils.GenerateRefreshToken(user.ID)
 	if err != nil {
-		return response, errors.New("토큰 생성에 실패했습니다.")
+		return response, errors.New("토큰 생성에 실패했습니다")
 	}
 
 	session := models.Session{
@@ -121,7 +121,7 @@ func LoginUser(req LoginRequest) (LoginResponse, error) {
 		ExpiresAt:    expiresAt,
 	}
 	if err := repositories.CreateSession(&session); err != nil {
-		return response, errors.New("세션 저장에 실패했습니다.")
+		return response, errors.New("세션 저장에 실패했습니다")
 	}
 
 	response.AccessToken = accessToken
@@ -249,7 +249,7 @@ func ProcessSocialLogin(req SocialLoginRequest) (LoginResponse, error) {
 		providerID = googleUser.Sub // 구글 고유 ID는 'sub' 필드
 
 	} else {
-		return response, errors.New("지원하지 않는 소셜 로그인입니다.")
+		return response, errors.New("지원하지 않는 소셜 로그인입니다")
 	}
 
 	// --- [이하 로직은 공통] ---
@@ -283,13 +283,13 @@ func ProcessSocialLogin(req SocialLoginRequest) (LoginResponse, error) {
 	}
 	accessToken, err := utils.GenerateAccessToken(user.ID, nickname)
 	if err != nil {
-		return response, errors.New("토큰 생성에 실패했습니다.")
+		return response, errors.New("토큰 생성에 실패했습니다")
 	}
 
 	// 5. Refresh Token 생성 및 세션 저장
 	refreshToken, expiresAt, err := utils.GenerateRefreshToken(user.ID)
 	if err != nil {
-		return response, errors.New("토큰 생성에 실패했습니다.")
+		return response, errors.New("토큰 생성에 실패했습니다")
 	}
 	session := models.Session{
 		UserID:       user.ID,
@@ -297,7 +297,7 @@ func ProcessSocialLogin(req SocialLoginRequest) (LoginResponse, error) {
 		ExpiresAt:    expiresAt,
 	}
 	if err := repositories.CreateSession(&session); err != nil {
-		return response, errors.New("세션 저장에 실패했습니다.")
+		return response, errors.New("세션 저장에 실패했습니다")
 	}
 
 	response.AccessToken = accessToken
@@ -313,18 +313,18 @@ func RefreshTokens(refreshToken string) (LoginResponse, error) {
 	// 1. Refresh Token 으로 세션 조회
 	session, err := repositories.FindSessionByToken(refreshToken)
 	if err != nil {
-		return response, errors.New("유효하지 않은 Refresh Token 입니다.")
+		return response, errors.New("유효하지 않은 Refresh Token 입니다")
 	}
 
 	// 2. 만료 검증
 	if time.Now().After(session.ExpiresAt) {
-		return response, errors.New("Refresh Token 이 만료되었습니다. 다시 로그인 해주세요.")
+		return response, errors.New("refresh token 이 만료되었습니다. 다시 로그인 해주세요")
 	}
 
 	// 3. 유저 정보 조회
 	user, err := repositories.FindUserByID(session.UserID)
 	if err != nil {
-		return response, errors.New("유저 정보를 찾을 수 없습니다.")
+		return response, errors.New("유저 정보를 찾을 수 없습니다")
 	}
 
 	// 4. Access Token 재발급 (Nickname nil 처리)
@@ -334,13 +334,13 @@ func RefreshTokens(refreshToken string) (LoginResponse, error) {
 	}
 	newAccess, err := utils.GenerateAccessToken(user.ID, nickname)
 	if err != nil {
-		return response, errors.New("Access Token 생성 실패")
+		return response, errors.New("access token 생성 실패")
 	}
 
 	// 5. Refresh Token 재발급 (Token Rotation)
 	newRefresh, newExp, err := utils.GenerateRefreshToken(user.ID)
 	if err != nil {
-		return response, errors.New("Refresh Token 생성 실패")
+		return response, errors.New("refresh token 생성 실패")
 	}
 
 	// 6. 세션 DB 갱신
@@ -378,18 +378,18 @@ func SetupProfile(userID uint, nickname string, imageURL string) (models.User, e
 	// 1. 유저 정보 가져오기
 	user, err := repositories.FindUserByID(userID)
 	if err != nil {
-		return user, errors.New("유저를 찾을 수 없습니다.")
+		return user, errors.New("유저를 찾을 수 없습니다")
 	}
 
 	// 2. 이미 설정했는지 확인
 	if user.Nickname != nil {
-		return user, errors.New("이미 프로필이 설정되었습니다.")
+		return user, errors.New("이미 프로필이 설정되었습니다")
 	}
 
 	// 3. DB 업데이트
 	err = repositories.UpdateUserProfile(&user, nickname, imageURL)
 	if err != nil {
-		return user, errors.New("프로필 업데이트에 실패했습니다.")
+		return user, errors.New("프로필 업데이트에 실패했습니다")
 	}
 
 	user.Nickname = &nickname
