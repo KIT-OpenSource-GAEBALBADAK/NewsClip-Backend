@@ -4,6 +4,7 @@ import (
 	"html"
 	"log"
 	"net/http"
+	"net/url"
 	"newsclip/backend/internal/app/models"
 	"newsclip/backend/internal/app/repositories"
 	"newsclip/backend/pkg/navernews"
@@ -29,40 +30,40 @@ func cleanString(s string) string {
 	return stripped
 }
 
-// === 원문 URL에서 OG:IMAGE 태그를 추출하는 함수 ===
-func getOgpImage(url string) (string, error) {
-	// 1. HTTP GET 요청
+// === [수정] 함수명 변경 및 기능 확장 (og:image + og:site_name) ===
+// (url) -> (imageURL, siteName, error)
+func getPageMetadata(url string) (string, string, error) {
 	res, err := http.Get(url)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != 200 {
-		return "", log.Output(2, "request failed")
+		return "", "", log.Output(2, "request failed")
 	}
 
-	// 2. HTML 파싱
 	doc, err := goquery.NewDocumentFromReader(res.Body)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
-	// 3. "og:image" 메타 태그 검색
-	var imageURL string
+	var imageURL, siteName string
+
+	// meta 태그를 한 번만 순회하며 두 가지 정보를 찾습니다.
 	doc.Find("meta").Each(func(i int, s *goquery.Selection) {
-		// "property" 속성이 "og:image"인 태그를 찾음
-		if property, _ := s.Attr("property"); property == "og:image" {
-			// "content" 속성(실제 URL)을 가져옴
+		property, _ := s.Attr("property")
+
+		if property == "og:image" {
 			imageURL, _ = s.Attr("content")
+		}
+
+		if property == "og:site_name" {
+			siteName, _ = s.Attr("content")
 		}
 	})
 
-	if imageURL == "" {
-		return "", log.Output(2, "og:image not found")
-	}
-
-	return imageURL, nil
+	return imageURL, siteName, nil
 }
 
 // === 모든 카테고리 뉴스를 병렬로 수집하는 함수 ===
@@ -102,11 +103,10 @@ func FetchAllCategories() error {
 }
 
 // === [수정] FetchAndStoreNews 함수 ===
-// (cleanString 함수를 적용)
+// (언론사명, 작성시간 추가)
 func FetchAndStoreNews(query string, display int) error {
 	client := navernews.NewClient()
 
-	// 1. 네이버 API에서 뉴스 검색
 	resp, err := client.SearchNews(query, display, 1)
 	if err != nil {
 		return err
@@ -114,7 +114,6 @@ func FetchAndStoreNews(query string, display int) error {
 
 	log.Printf("Fetched %d items for query '%s' from Naver.", len(resp.Items), query)
 
-	// 2. DB 모델로 변환 (이미지 크롤링 추가)
 	var newsToCreate []models.News
 	for _, item := range resp.Items {
 
@@ -122,27 +121,48 @@ func FetchAndStoreNews(query string, display int) error {
 
 		_, err := repositories.FindNewsByExternalID(externalID)
 		if err == nil {
-			continue // 중복이면 건너뛰기
+			continue // 중복
 		}
 
-		imageURL, err := getOgpImage(item.Originallink)
+		// --- [수정] 1. 메타데이터(이미지, 언론사) 가져오기 ---
+		imageURL, publisherName, err := getPageMetadata(item.Originallink)
 		if err != nil {
+			log.Printf("Failed to get metadata for %s: %v", item.Title, err)
 			imageURL = ""
 		}
 
-		// === [수정] 저장 전에 문자열 정리 ===
+		// [수정] 1-1. 언론사명이 비어있을 경우, 원문 링크의 호스트(도메인)로 대체
+		if publisherName == "" {
+			parsedURL, err := url.Parse(item.Originallink)
+			if err == nil {
+				publisherName = parsedURL.Host // 예: "www.yna.co.kr"
+			} else {
+				publisherName = "Unknown" // 파싱 실패 시
+			}
+		}
+
+		// --- [수정] 2. 원본 기사 작성 시간(pubDate) 파싱 ---
+		// Naver API의 pubDate는 "RFC 1123Z" 형식 (예: Mon, 10 Nov 2025 14:30:00 +0900)
+		pubTime, err := time.Parse(time.RFC1123Z, item.PubDate)
+		if err != nil {
+			// [수정] 3. 파싱 실패 시(요구사항 #3) 현재 시간으로 대체
+			log.Printf("Failed to parse pubDate '%s', using current time. Error: %v", item.PubDate, err)
+			pubTime = time.Now()
+		}
+
+		// --- [수정] 4. 문자열 정리 ---
 		cleanTitle := cleanString(item.Title)
 		cleanDescription := cleanString(item.Description)
-		// =================================
 
 		newsToCreate = append(newsToCreate, models.News{
-			ExternalID: externalID,
-			Title:      cleanTitle,       // [수정]
-			Content:    cleanDescription, // [수정]
-			Source:     item.Originallink,
-			URL:        item.Link,
-			Category:   query,
-			ImageURL:   imageURL,
+			ExternalID:  externalID,
+			Title:       cleanTitle,
+			Content:     cleanDescription,
+			Source:      publisherName, // [수정] "연합뉴스" 또는 "www.yna.co.kr"
+			URL:         item.Link,
+			Category:    query,
+			ImageURL:    imageURL,
+			PublishedAt: pubTime, // [신규] 원본 기사 시간
 		})
 	}
 
