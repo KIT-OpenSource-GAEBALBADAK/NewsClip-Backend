@@ -198,3 +198,37 @@ func CleanupOldNews() error {
 	log.Printf("✅ [Cleaner] Successfully deleted %d old news items.", count)
 	return nil
 }
+
+// === [신규] 뉴스 목록 조회 서비스 ===
+// (지금은 레포지토리를 호출만 하지만, 추후 'isBookmarked' 로직이 여기에 추가됨)
+// (DTO를 사용하여 API 응답 구조를 정의)
+type NewsListDTO struct {
+	News       []models.News `json:"news"`
+	TotalItems int64         `json:"totalItems"`
+	TotalPages int           `json:"totalPages"`
+}
+
+func GetNewsList(category string, page int, size int, userID uint) (*NewsListDTO, error) {
+
+	// 1. 레포지토리에서 데이터 조회
+	newsList, totalCount, totalPages, err := repositories.GetNewsByCategory(category, page, size)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. [향후 로직 추가]
+	// if userID > 0 {
+	//    - newsList에서 newsID 목록 추출
+	//    - repositories.FindBookmarkedNewsIDs(userID, newsIDs) 호출
+	//    - DTO를 새로 정의하고(NewsItemDTO), newsList를 순회하며 'isBookmarked' 값을 채워넣기
+	// }
+
+	// 3. (현재) DTO에 담아 반환
+	response := &NewsListDTO{
+		News:       newsList,
+		TotalItems: totalCount,
+		TotalPages: totalPages,
+	}
+
+	return response, nil
+}

@@ -1,9 +1,12 @@
 package repositories
 
 import (
+	"math"
 	"newsclip/backend/config"
 	"newsclip/backend/internal/app/models"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 // [신규] ExternalID(Naver News 링크)로 뉴스를 찾습니다.
@@ -22,26 +25,47 @@ func CreateNewsBatch(newsList []models.News) error {
 	return result.Error
 }
 
-// [참고] 카테고리별 뉴스 목록 조회 (API 명세서 3.1)
-// (나중에 컨트롤러에서 사용할 함수 예시)
-func GetNewsByCategory(category string, page int, size int) ([]models.News, int64, error) {
+// === [신규] 카테고리별 뉴스 목록 조회 (페이징 포함) ===
+// (totalPages 반환을 위해 int64(totalCount)도 함께 반환)
+func GetNewsByCategory(category string, page int, size int) ([]models.News, int64, int, error) {
 	var newsList []models.News
-	var total int64
+	var totalCount int64
 
-	// 1. 카테고리에 해당하는 전체 뉴스 개수 카운트
-	config.DB.Model(&models.News{}).Where("category = ?", category).Count(&total)
+	// 1. (DB 트랜잭션)
+	//    전체 카운트와 목록 조회를 트랜잭션으로 묶어 데이터 일관성 보장
+	err := config.DB.Transaction(func(tx *gorm.DB) error {
+		// 1-1. category가 "전체"일 경우
+		query := tx.Model(&models.News{})
+		if category != "전체" {
+			query = query.Where("category = ?", category)
+		}
 
-	// 2. 페이징 계산 (Offset)
-	offset := (page - 1) * size
+		// 1-2. 전체 아이템 개수(totalCount) 조회
+		if err := query.Count(&totalCount).Error; err != nil {
+			return err
+		}
 
-	// 3. 데이터 조회 (최신순 정렬)
-	result := config.DB.Where("category = ?", category).
-		Order("created_at DESC").
-		Limit(size).
-		Offset(offset).
-		Find(&newsList)
+		// 1-3. 페이징 계산 (Offset)
+		offset := (page - 1) * size
 
-	return newsList, total, result.Error
+		// 1-4. 실제 데이터 목록 조회 (최신순: published_at 기준)
+		if err := query.Order("published_at DESC").
+			Limit(size).
+			Offset(offset).
+			Find(&newsList).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+
+	if err != nil {
+		return nil, 0, 0, err
+	}
+
+	// 2. 전체 페이지 수(totalPages) 계산
+	totalPages := int(math.Ceil(float64(totalCount) / float64(size)))
+
+	return newsList, totalCount, totalPages, nil
 }
 
 // === 특정 날짜 이전의 뉴스를 삭제합니다. ===
