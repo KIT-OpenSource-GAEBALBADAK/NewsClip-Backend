@@ -36,6 +36,15 @@ func SetupRouter() *gin.Engine {
 			auth.POST("/setup-profile", middlewares.AuthMiddleware(), controllers.SetupProfile)
 		}
 
+		news := v1.Group("/news")
+		{
+			// [신규] (참고: AuthMiddlewareOptional() 같은 것이 필요)
+			// 우선 인증 없이 라우트 등록
+			news.GET("/", controllers.GetNewsList)
+
+			// ... (기타 /:newsId, /interact, /bookmark 라우트) ...
+		}
+
 		// ✅ 내 프로필 조회 추가
 		v1.GET("/me", middlewares.AuthMiddleware(), controllers.GetMyProfile)
 		// ✅ 내 프로필 수정
