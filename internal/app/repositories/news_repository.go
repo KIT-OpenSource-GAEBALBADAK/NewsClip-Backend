@@ -80,3 +80,21 @@ func DeleteNewsOlderThan(cutoffDate time.Time) (int64, error) {
 	// 삭제된 행(row)의 개수를 반환
 	return result.RowsAffected, nil
 }
+
+// === [신규] Primary Key(ID)로 뉴스 1건 조회 ===
+func FindNewsByID(newsID uint) (models.News, error) {
+	var news models.News
+	// ID로 조회
+	result := config.DB.First(&news, newsID)
+	return news, result.Error
+}
+
+// === [신규] 뉴스의 조회수(view_count)를 1 증가시킴 ===
+func IncrementNewsViewCount(newsID uint) error {
+	// GORM의 UpdateColumn을 사용하여 특정 컬럼만 +1 업데이트
+	// (SQL: UPDATE news SET view_count = view_count + 1 WHERE id = ?)
+	result := config.DB.Model(&models.News{}).Where("id = ?", newsID).
+		UpdateColumn("view_count", gorm.Expr("view_count + 1"))
+
+	return result.Error
+}

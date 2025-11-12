@@ -31,16 +31,20 @@ func SetupRouter() *gin.Engine {
 			auth.POST("/refresh", controllers.RefreshToken)
 			auth.POST("/check-username", controllers.CheckUsername)
 
-			// [신규] 인증이 필요한 라우트
+			// 인증이 필요한 라우트
 			// AuthMiddleware()가 먼저 실행되어 토큰을 검증
 			auth.POST("/setup-profile", middlewares.AuthMiddleware(), controllers.SetupProfile)
 		}
 
 		news := v1.Group("/news")
 		{
-			// [신규] (참고: AuthMiddlewareOptional() 같은 것이 필요)
+			// (참고: AuthMiddlewareOptional() 같은 것이 필요)
 			// 우선 인증 없이 라우트 등록
 			news.GET("/", controllers.GetNewsList)
+
+			// === /:newsId 엔드포인트 연결 ===
+			// (참고: 인증 없이도 볼 수 있어야 하므로 미들웨어 제외)
+			news.GET("/:newsId", controllers.GetNewsDetail)
 
 			// ... (기타 /:newsId, /interact, /bookmark 라우트) ...
 		}
