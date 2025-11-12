@@ -15,7 +15,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
-// === [신규] HTML 태그를 제거하기 위한 정규식 컴파일러 ===
+// === HTML 태그를 제거하기 위한 정규식 컴파일러 ===
 // (<...> 형태의 모든 태그를 찾음, 서버 시작 시 1회만 컴파일)
 var tagStripper = regexp.MustCompile("<[^>]*>")
 
@@ -199,7 +199,7 @@ func CleanupOldNews() error {
 	return nil
 }
 
-// === [신규] 뉴스 목록 조회 서비스 ===
+// === 뉴스 목록 조회 서비스 ===
 // (지금은 레포지토리를 호출만 하지만, 추후 'isBookmarked' 로직이 여기에 추가됨)
 // (DTO를 사용하여 API 응답 구조를 정의)
 type NewsListDTO struct {
@@ -228,6 +228,66 @@ func GetNewsList(category string, page int, size int, userID uint) (*NewsListDTO
 		News:       newsList,
 		TotalItems: totalCount,
 		TotalPages: totalPages,
+	}
+
+	return response, nil
+}
+
+// === 뉴스 상세 조회 서비스 ===
+// (향후 사용자별 데이터를 위해 userID도 받도록 설계)
+type NewsDetailDTO struct {
+	models.News
+	IsBookmarked bool `json:"isBookmarked"`
+	IsLiked      bool `json:"isLiked"`
+	IsDisliked   bool `json:"isDisliked"`
+}
+
+func GetNewsDetail(newsID uint, userID uint) (*NewsDetailDTO, error) {
+
+	// 1. (병렬 처리) DB에서 뉴스 정보 가져오기
+	//    (조회수 증가는 응답 속도에 영향을 주지 않도록 goroutine으로 분리)
+
+	newsChan := make(chan models.News)
+	errChan := make(chan error)
+
+	go func() {
+		news, err := repositories.FindNewsByID(newsID)
+		if err != nil {
+			errChan <- err
+			return
+		}
+		newsChan <- news
+	}()
+
+	// 2. (백그라운드) 조회수 1 증가 (에러 나도 무시)
+	go func() {
+		_ = repositories.IncrementNewsViewCount(newsID)
+	}()
+
+	// 3. [향후 로직] 사용자별 상호작용 정보 가져오기
+	//    (지금은 기본값으로 둡니다)
+	//    - go repositories.CheckBookmark(userID, newsID)
+	//    - go repositories.CheckInteraction(userID, newsID)
+	isBookmarked := false
+	isLiked := false
+	isDisliked := false
+
+	// 4. 뉴스 정보가 로드될 때까지 대기
+	var news models.News
+	select {
+	case news = <-newsChan:
+		// 성공
+	case err := <-errChan:
+		// 실패
+		return nil, err
+	}
+
+	// 5. DTO에 담아 반환
+	response := &NewsDetailDTO{
+		News:         news,
+		IsBookmarked: isBookmarked,
+		IsLiked:      isLiked,
+		IsDisliked:   isDisliked,
 	}
 
 	return response, nil
