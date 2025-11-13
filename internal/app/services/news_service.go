@@ -406,3 +406,40 @@ func InteractWithNews(userID, newsID uint, newType string) (*InteractionResponse
 
 	return &finalResponse, nil
 }
+
+// === 뉴스 북마크 토글 서비스 ===
+// (최종 북마크 상태를 bool로 반환)
+func ToggleBookmark(userID, newsID uint) (bool, error) {
+
+	// 1. 북마크가 이미 존재하는지 확인
+	existingBookmark, err := repositories.FindBookmark(userID, newsID)
+
+	// [시나리오 1] 북마크가 존재하지 않음 (gorm.ErrRecordNotFound)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		newBookmark := &models.NewsBookmark{
+			UserID: userID,
+			NewsID: newsID,
+		}
+
+		if err := repositories.CreateBookmark(newBookmark); err != nil {
+			// (참고: 만약 newsID가 존재하지 않아 FK 에러가 나면 여기서 걸림)
+			return false, err // 생성 실패
+		}
+
+		// [수정] 생성에 성공했으므로 'true' (북마크 됨) 상태 반환
+		return true, nil
+	}
+
+	// [시나리오 2] 북마크가 이미 존재함 (err == nil)
+	if err == nil {
+		if err := repositories.DeleteBookmark(&existingBookmark); err != nil {
+			return false, err // 삭제 실패
+		}
+
+		// [수정] 삭제에 성공했으므로 'false' (북마크 취소됨) 상태 반환
+		return false, nil
+	}
+
+	// [시나리오 3] 기타 DB 오류
+	return false, err
+}

@@ -135,3 +135,22 @@ func UpdateNewsCounts(tx *gorm.DB, newsID uint, likeDelta int, dislikeDelta int)
 		"dislike_count": gorm.Expr("dislike_count + ?", dislikeDelta),
 	}).Error
 }
+
+// === 북마크 처리를 위한 3개 함수 ===
+
+// FindBookmark (UserID, NewsID로 북마크 조회)
+func FindBookmark(userID, newsID uint) (models.NewsBookmark, error) {
+	var bookmark models.NewsBookmark
+	result := config.DB.Where("user_id = ? AND news_id = ?", userID, newsID).First(&bookmark)
+	return bookmark, result.Error
+}
+
+// CreateBookmark (새 북마크 생성)
+func CreateBookmark(bookmark *models.NewsBookmark) error {
+	return config.DB.Create(bookmark).Error
+}
+
+// DeleteBookmark (기존 북마크 삭제)
+func DeleteBookmark(bookmark *models.NewsBookmark) error {
+	return config.DB.Delete(bookmark).Error
+}

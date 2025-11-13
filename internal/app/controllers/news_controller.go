@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"errors"
 	"net/http"
 	"newsclip/backend/internal/app/services"
 	"newsclip/backend/internal/app/utils"
@@ -10,7 +11,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// === [신규] 뉴스 목록 조회 컨트롤러 ===
+// === 뉴스 목록 조회 컨트롤러 ===
 func GetNewsList(c *gin.Context) {
 	// 1. 쿼리 파라미터 파싱
 	// (카테고리가 없으면 '전체'를 기본값으로 사용)
@@ -137,5 +138,48 @@ func InteractNews(c *gin.Context) {
 		"status":  "success",
 		"message": "상호작용이 처리되었습니다.",
 		"data":    responseDTO,
+	})
+}
+
+// === 뉴스 북마크 토글 컨트롤러 ===
+func BookmarkNews(c *gin.Context) {
+	// 1. 미들웨어에서 userID 가져오기
+	userIDValue, exists := c.Get("userID")
+	if !exists {
+		utils.SendError(c, http.StatusUnauthorized, "인증 정보가 없습니다.")
+		return
+	}
+	userID, _ := userIDValue.(uint)
+
+	// 2. URL에서 newsId 가져오기
+	newsIDStr := c.Param("newsId")
+	newsID64, err := strconv.ParseUint(newsIDStr, 10, 32)
+	if err != nil {
+		utils.SendError(c, http.StatusBadRequest, "잘못된 뉴스 ID입니다.")
+		return
+	}
+	newsID := uint(newsID64)
+
+	// 3. 서비스 로직 호출
+	isBookmarked, err := services.ToggleBookmark(userID, newsID)
+	if err != nil {
+		// [수정] 서비스가 ErrRecordNotFound를 처리하므로 컨트롤러에서 제거
+		// (대신, newsID가 존재하지 않아 발생하는 FK 에러 등을 여기서 처리)
+		if errors.Is(err, gorm.ErrForeignKeyViolated) {
+			utils.SendError(c, http.StatusNotFound, "해당 뉴스를 찾을 수 없습니다.")
+			return
+		}
+
+		utils.SendError(c, http.StatusInternalServerError, "북마크 처리에 실패했습니다.")
+		return
+	}
+
+	// 4. 성공 응답
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "북마크가 처리되었습니다.",
+		"data": gin.H{
+			"is_bookmarked": isBookmarked,
+		},
 	})
 }
