@@ -1,10 +1,12 @@
 package services
 
 import (
+	"errors"
 	"html"
 	"log"
 	"net/http"
 	"net/url"
+	"newsclip/backend/config"
 	"newsclip/backend/internal/app/models"
 	"newsclip/backend/internal/app/repositories"
 	"newsclip/backend/pkg/navernews"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	"gorm.io/gorm"
 )
 
 // === HTML 태그를 제거하기 위한 정규식 컴파일러 ===
@@ -291,4 +294,115 @@ func GetNewsDetail(newsID uint, userID uint) (*NewsDetailDTO, error) {
 	}
 
 	return response, nil
+}
+
+// === 상호작용 DTO ===
+type InteractionRequest struct {
+	InteractionType string `json:"interaction_type" binding:"required"`
+}
+
+type InteractionResponseDTO struct {
+	IsLiked      bool `json:"isLiked"`
+	IsDisliked   bool `json:"isDisliked"`
+	LikeCount    int  `json:"likeCount"`
+	DislikeCount int  `json:"dislikeCount"`
+}
+
+// === 뉴스 상호작용 서비스 ===
+func InteractWithNews(userID, newsID uint, newType string) (*InteractionResponseDTO, error) {
+
+	// 최종 응답으로 사용할 변수
+	var finalResponse InteractionResponseDTO
+
+	// 트랜잭션 시작
+	err := config.DB.Transaction(func(tx *gorm.DB) error {
+
+		// 1. 기존 상호작용 조회
+		existingInteraction, err := repositories.FindNewsInteraction(tx, userID, newsID)
+
+		var likeDelta, dislikeDelta int = 0, 0
+
+		// --- 3가지 시나리오 분기 ---
+
+		// [시나리오 1] 최초의 상호작용 (gorm.ErrRecordNotFound)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			newInteraction := &models.NewsInteraction{
+				UserID:          userID,
+				NewsID:          newsID,
+				InteractionType: newType,
+			}
+			if err := repositories.CreateNewsInteraction(tx, newInteraction); err != nil {
+				return err
+			}
+
+			// 캐시 카운트 +1
+			if newType == "like" {
+				likeDelta = 1
+			} else {
+				dislikeDelta = 1
+			}
+
+			// 최종 상태 설정
+			finalResponse.IsLiked = (newType == "like")
+			finalResponse.IsDisliked = (newType == "dislike")
+		} else if err == nil { // [시나리오 2] 이미 상호작용이 존재함
+			// [2-A] 같은 버튼을 또 눌렀음 (취소)
+			if existingInteraction.InteractionType == newType {
+				if err := repositories.DeleteNewsInteraction(tx, &existingInteraction); err != nil {
+					return err
+				}
+				// 캐시 카운트 -1
+				if newType == "like" {
+					likeDelta = -1
+				} else {
+					dislikeDelta = -1
+				}
+
+				// 최종 상태 설정 (둘 다 false)
+				finalResponse.IsLiked = false
+				finalResponse.IsDisliked = false
+			} else { // [2-B] 다른 버튼을 눌렀음 (전환: like -> dislike)
+				if err := repositories.UpdateNewsInteraction(tx, &existingInteraction, newType); err != nil {
+					return err
+				}
+				// 캐시 카운트 전환 (예: like -1, dislike +1)
+				if newType == "like" { // 'dislike' -> 'like'로 전환
+					likeDelta = 1
+					dislikeDelta = -1
+				} else { // 'like' -> 'dislike'로 전환
+					likeDelta = -1
+					dislikeDelta = 1
+				}
+
+				// 최종 상태 설정
+				finalResponse.IsLiked = (newType == "like")
+				finalResponse.IsDisliked = (newType == "dislike")
+			}
+
+		} else { // [시나리오 3] 기타 DB 오류
+			return err
+		}
+
+		// 2. 'news' 테이블의 캐시 카운트 업데이트
+		if err := repositories.UpdateNewsCounts(tx, newsID, likeDelta, dislikeDelta); err != nil {
+			return err
+		}
+
+		// 3. 최종 카운트를 DB에서 다시 읽어와서 응답에 담기
+		var news models.News
+		if err := tx.Select("like_count", "dislike_count").First(&news, newsID).Error; err != nil {
+			return err
+		}
+
+		finalResponse.LikeCount = news.LikeCount
+		finalResponse.DislikeCount = news.DislikeCount
+
+		return nil // 트랜잭션 커밋
+	}) // --- 트랜잭션 종료 ---
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &finalResponse, nil
 }

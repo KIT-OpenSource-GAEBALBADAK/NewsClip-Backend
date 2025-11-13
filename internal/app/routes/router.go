@@ -46,7 +46,8 @@ func SetupRouter() *gin.Engine {
 			// (참고: 인증 없이도 볼 수 있어야 하므로 미들웨어 제외)
 			news.GET("/:newsId", controllers.GetNewsDetail)
 
-			// ... (기타 /:newsId, /interact, /bookmark 라우트) ...
+			// (인증 필요) P3. 뉴스 상호작용 (좋아요/싫어요)
+			news.POST("/:newsId/interact", middlewares.AuthMiddleware(), controllers.InteractNews)
 		}
 
 		// ✅ 내 프로필 조회 추가

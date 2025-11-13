@@ -92,3 +92,50 @@ func GetNewsDetail(c *gin.Context) {
 		"data":    responseDTO,
 	})
 }
+
+// === 뉴스 상호작용 컨트롤러 ===
+func InteractNews(c *gin.Context) {
+	// 1. 미들웨어에서 userID 가져오기
+	userIDValue, exists := c.Get("userID")
+	if !exists {
+		utils.SendError(c, http.StatusUnauthorized, "인증 정보가 없습니다.")
+		return
+	}
+	userID, _ := userIDValue.(uint)
+
+	// 2. URL에서 newsId 가져오기
+	newsIDStr := c.Param("newsId")
+	newsID64, err := strconv.ParseUint(newsIDStr, 10, 32)
+	if err != nil {
+		utils.SendError(c, http.StatusBadRequest, "잘못된 뉴스 ID입니다.")
+		return
+	}
+	newsID := uint(newsID64)
+
+	// 3. Request Body 바인딩
+	var req services.InteractionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.SendError(c, http.StatusBadRequest, "잘못된 요청 형식입니다.")
+		return
+	}
+
+	// 4. interaction_type 유효성 검사
+	if req.InteractionType != "like" && req.InteractionType != "dislike" {
+		utils.SendError(c, http.StatusBadRequest, "interaction_type은 'like' 또는 'dislike'여야 합니다.")
+		return
+	}
+
+	// 5. 서비스 로직 호출
+	responseDTO, err := services.InteractWithNews(userID, newsID, req.InteractionType)
+	if err != nil {
+		utils.SendError(c, http.StatusInternalServerError, "상호작용 처리에 실패했습니다.")
+		return
+	}
+
+	// 6. 성공 응답
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "상호작용이 처리되었습니다.",
+		"data":    responseDTO,
+	})
+}
