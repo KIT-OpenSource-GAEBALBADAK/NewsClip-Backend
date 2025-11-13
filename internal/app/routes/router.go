@@ -41,13 +41,13 @@ func SetupRouter() *gin.Engine {
 			// (참고: AuthMiddlewareOptional() 같은 것이 필요)
 			// 우선 인증 없이 라우트 등록
 			news.GET("/", controllers.GetNewsList)
-
 			// === /:newsId 엔드포인트 연결 ===
 			// (참고: 인증 없이도 볼 수 있어야 하므로 미들웨어 제외)
 			news.GET("/:newsId", controllers.GetNewsDetail)
-
 			// (인증 필요) P3. 뉴스 상호작용 (좋아요/싫어요)
 			news.POST("/:newsId/interact", middlewares.AuthMiddleware(), controllers.InteractNews)
+			// 뉴스 북마크 - 인증 필요
+			news.POST("/:newsId/bookmark", middlewares.AuthMiddleware(), controllers.BookmarkNews)
 		}
 
 		// ✅ 내 프로필 조회 추가
