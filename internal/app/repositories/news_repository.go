@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// [신규] ExternalID(Naver News 링크)로 뉴스를 찾습니다.
+// ExternalID(Naver News 링크)로 뉴스를 찾습니다.
 // (뉴스 수집 시 중복 체크용)
 func FindNewsByExternalID(externalID string) (models.News, error) {
 	var news models.News
@@ -17,7 +17,7 @@ func FindNewsByExternalID(externalID string) (models.News, error) {
 	return news, result.Error
 }
 
-// [신규] 수집된 뉴스 목록을 DB에 일괄 생성(Batch Create)합니다.
+// 수집된 뉴스 목록을 DB에 일괄 생성(Batch Create)합니다.
 func CreateNewsBatch(newsList []models.News) error {
 	// GORM의 CreateInBatches를 사용하면 효율적입니다.
 	// (단, GORM 2.0 이상 필요)
@@ -25,7 +25,7 @@ func CreateNewsBatch(newsList []models.News) error {
 	return result.Error
 }
 
-// === [신규] 카테고리별 뉴스 목록 조회 (페이징 포함) ===
+// === 카테고리별 뉴스 목록 조회 (페이징 포함) ===
 // (totalPages 반환을 위해 int64(totalCount)도 함께 반환)
 func GetNewsByCategory(category string, page int, size int) ([]models.News, int64, int, error) {
 	var newsList []models.News
@@ -81,7 +81,7 @@ func DeleteNewsOlderThan(cutoffDate time.Time) (int64, error) {
 	return result.RowsAffected, nil
 }
 
-// === [신규] Primary Key(ID)로 뉴스 1건 조회 ===
+// === Primary Key(ID)로 뉴스 1건 조회 ===
 func FindNewsByID(newsID uint) (models.News, error) {
 	var news models.News
 	// ID로 조회
@@ -89,7 +89,7 @@ func FindNewsByID(newsID uint) (models.News, error) {
 	return news, result.Error
 }
 
-// === [신규] 뉴스의 조회수(view_count)를 1 증가시킴 ===
+// === 뉴스의 조회수(view_count)를 1 증가시킴 ===
 func IncrementNewsViewCount(newsID uint) error {
 	// GORM의 UpdateColumn을 사용하여 특정 컬럼만 +1 업데이트
 	// (SQL: UPDATE news SET view_count = view_count + 1 WHERE id = ?)
@@ -97,4 +97,41 @@ func IncrementNewsViewCount(newsID uint) error {
 		UpdateColumn("view_count", gorm.Expr("view_count + 1"))
 
 	return result.Error
+}
+
+// === 상호작용 처리를 위한 5개 함수 ===
+
+// FindNewsInteraction (트랜잭션용)
+// : 유저가 해당 뉴스에 대해 기존에 한 상호작용을 찾습니다.
+func FindNewsInteraction(tx *gorm.DB, userID, newsID uint) (models.NewsInteraction, error) {
+	var interaction models.NewsInteraction
+	result := tx.Where("user_id = ? AND news_id = ?", userID, newsID).First(&interaction)
+	return interaction, result.Error
+}
+
+// CreateNewsInteraction (트랜잭션용)
+// : 새로운 상호작용 레코드를 생성합니다.
+func CreateNewsInteraction(tx *gorm.DB, interaction *models.NewsInteraction) error {
+	return tx.Create(interaction).Error
+}
+
+// DeleteNewsInteraction (트랜잭션용)
+// : 기존 상호작용 레코드를 삭제합니다. (취소)
+func DeleteNewsInteraction(tx *gorm.DB, interaction *models.NewsInteraction) error {
+	return tx.Delete(interaction).Error
+}
+
+// UpdateNewsInteraction (트랜잭션용)
+// : 기존 상호작용 타입을 변경합니다. (like -> dislike)
+func UpdateNewsInteraction(tx *gorm.DB, interaction *models.NewsInteraction, newType string) error {
+	return tx.Model(interaction).Update("interaction_type", newType).Error
+}
+
+// UpdateNewsCounts (트랜잭션용)
+// : 'news' 테이블의 캐시 카운트를 증감시킵니다. (Deltas: +1, -1, 0)
+func UpdateNewsCounts(tx *gorm.DB, newsID uint, likeDelta int, dislikeDelta int) error {
+	return tx.Model(&models.News{}).Where("id = ?", newsID).Updates(map[string]interface{}{
+		"like_count":    gorm.Expr("like_count + ?", likeDelta),
+		"dislike_count": gorm.Expr("dislike_count + ?", dislikeDelta),
+	}).Error
 }
