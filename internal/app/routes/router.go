@@ -50,10 +50,18 @@ func SetupRouter() *gin.Engine {
 			news.POST("/:newsId/bookmark", middlewares.AuthMiddleware(), controllers.BookmarkNews)
 		}
 
-		// ✅ 내 프로필 조회 추가
-		v1.GET("/me", middlewares.AuthMiddleware(), controllers.GetMyProfile)
-		// ✅ 내 프로필 수정
-		v1.POST("/me/avatar", middlewares.AuthMiddleware(), controllers.UpdateProfile)
+		me := v1.Group("/me", middlewares.AuthMiddleware())
+		{
+			// 내 프로필 조회 추가
+			v1.GET("/", middlewares.AuthMiddleware(), controllers.GetMyProfile)
+			// 내 프로필 수정
+			v1.POST("/avatar", middlewares.AuthMiddleware(), controllers.UpdateProfile)
+			// === 내 북마크 조회 ===
+			me.GET("/bookmarks", controllers.GetMyBookmarks)
+
+			// ... (기타 /preferences/categories 등) ...
+		}
+
 	}
 
 	return router
