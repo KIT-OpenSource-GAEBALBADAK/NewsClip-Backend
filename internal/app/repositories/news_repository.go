@@ -154,3 +154,45 @@ func CreateBookmark(bookmark *models.NewsBookmark) error {
 func DeleteBookmark(bookmark *models.NewsBookmark) error {
 	return config.DB.Delete(bookmark).Error
 }
+
+// === [신규] 사용자가 북마크한 뉴스 목록 조회 (JOIN 및 페이징) ===
+func GetBookmarkedNews(userID uint, page int, size int) ([]models.News, int64, int, error) {
+	var newsList []models.News
+	var totalCount int64
+
+	err := config.DB.Transaction(func(tx *gorm.DB) error {
+		// 전체 북마크 개수
+		if err := tx.Model(&models.NewsBookmark{}).
+			Where("user_id = ?", userID).
+			Count(&totalCount).Error; err != nil {
+			return err
+		}
+
+		if totalCount == 0 {
+			return nil
+		}
+
+		offset := (page - 1) * size
+
+		// JOIN 조회
+		if err := tx.Table("news AS n").
+			Joins("JOIN news_bookmarks AS b ON n.id = b.news_id").
+			Where("b.user_id = ?", userID).
+			Order("b.created_at DESC").
+			Limit(size).
+			Offset(offset).
+			Find(&newsList).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, 0, 0, err
+	}
+
+	totalPages := int(math.Ceil(float64(totalCount) / float64(size)))
+
+	return newsList, totalCount, totalPages, nil
+}

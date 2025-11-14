@@ -22,7 +22,7 @@ import (
 // (<...> 형태의 모든 태그를 찾음, 서버 시작 시 1회만 컴파일)
 var tagStripper = regexp.MustCompile("<[^>]*>")
 
-// === [신규] 문자열을 정리하는 헬퍼 함수 ===
+// === 문자열을 정리하는 헬퍼 함수 ===
 func cleanString(s string) string {
 	// 1. HTML 엔티티 디코딩 (예: &quot; -> ", &lt; -> <)
 	unescaped := html.UnescapeString(s)
@@ -33,7 +33,7 @@ func cleanString(s string) string {
 	return stripped
 }
 
-// === [수정] 함수명 변경 및 기능 확장 (og:image + og:site_name) ===
+// === 함수명 변경 및 기능 확장 (og:image + og:site_name) ===
 // (url) -> (imageURL, siteName, error)
 func getPageMetadata(url string) (string, string, error) {
 	res, err := http.Get(url)
@@ -70,7 +70,7 @@ func getPageMetadata(url string) (string, string, error) {
 }
 
 // === 모든 카테고리 뉴스를 병렬로 수집하는 함수 ===
-// === [수정] FetchAllCategories ===
+// === FetchAllCategories ===
 func FetchAllCategories() error {
 	categories := []string{
 		"정치", "경제", "문화", "환경", "기술", "스포츠",
@@ -105,7 +105,7 @@ func FetchAllCategories() error {
 	return nil
 }
 
-// === [수정] FetchAndStoreNews 함수 ===
+// === FetchAndStoreNews 함수 ===
 // (언론사명, 작성시간 추가)
 func FetchAndStoreNews(query string, display int) error {
 	client := navernews.NewClient()
@@ -442,4 +442,53 @@ func ToggleBookmark(userID, newsID uint) (bool, error) {
 
 	// [시나리오 3] 기타 DB 오류
 	return false, err
+}
+
+// === 북마크 목록 조회 DTO ===
+
+// BookmarkedNewsItemDTO: API 응답용 개별 뉴스 DTO (is_bookmarked 추가)
+// (models.News를 임베딩하여 모든 필드를 상속받음)
+type BookmarkedNewsItemDTO struct {
+	models.News       // News 모델의 모든 필드 (ID, Title, Content...)
+	IsBookmarked bool `json:"is_bookmarked"`
+}
+
+// BookmarkListResponseDTO: 최종 API 응답 DTO (페이지네이션 메타 포함)
+type BookmarkListResponseDTO struct {
+	News       []BookmarkedNewsItemDTO `json:"news"`
+	TotalItems int64                   `json:"total_items"`
+	TotalPages int                     `json:"total_pages"`
+	Page       int                     `json:"page"`
+	Size       int                     `json:"size"`
+}
+
+// === 북마크 목록 조회 서비스 ===
+func GetBookmarkedNewsList(userID uint, page int, size int) (*BookmarkListResponseDTO, error) {
+
+	// 1. 레포지토리에서 데이터 조회
+	newsList, totalCount, totalPages, err := repositories.GetBookmarkedNews(userID, page, size)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. models.News -> BookmarkedNewsItemDTO로 변환
+	// (이 목록은 북마크된 목록이므로 is_bookmarked는 항상 true)
+	bookmarkedItems := make([]BookmarkedNewsItemDTO, len(newsList))
+	for i, news := range newsList {
+		bookmarkedItems[i] = BookmarkedNewsItemDTO{
+			News:         news,
+			IsBookmarked: true,
+		}
+	}
+
+	// 3. 최종 응답 DTO 구성
+	response := &BookmarkListResponseDTO{
+		News:       bookmarkedItems,
+		TotalItems: totalCount,
+		TotalPages: totalPages,
+		Page:       page,
+		Size:       size,
+	}
+
+	return response, nil
 }
