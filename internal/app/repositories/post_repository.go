@@ -26,3 +26,14 @@ func GetPostsWithRelations(postType string, page, size int) ([]models.Post, erro
 
 	return posts, err
 }
+
+func CreatePost(post *models.Post) error {
+	return config.DB.Create(post).Error
+}
+
+func CreatePostImage(postID uint, imageURL string) error {
+	return config.DB.Create(&models.PostImage{
+		PostID:   postID,
+		ImageURL: imageURL,
+	}).Error
+}
