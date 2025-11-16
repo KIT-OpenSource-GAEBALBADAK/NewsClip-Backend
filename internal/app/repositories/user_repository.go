@@ -40,3 +40,42 @@ func UpdateUserProfile(user *models.User, nickname, profileImage string) error {
 	})
 	return result.Error
 }
+
+// 유저 통계 포함 조회 (posts, comments, likes 수)
+func GetUserProfile(userID uint) (map[string]interface{}, error) {
+	var user models.User
+	if err := config.DB.First(&user, userID).Error; err != nil {
+		return nil, err
+	}
+
+	var postCount int64
+	var commentCount int64
+	var likeCount int64
+
+	config.DB.Model(&models.Post{}).Where("user_id = ?", userID).Count(&postCount)
+	config.DB.Model(&models.PostComment{}).Where("user_id = ?", userID).Count(&commentCount)
+	config.DB.Model(&models.PostLike{}).Where("user_id = ?", userID).Count(&likeCount)
+
+	data := map[string]interface{}{
+		"nickname": user.Nickname,
+		"role":     user.Role,
+		"stats": map[string]interface{}{
+			"postCount":    postCount,
+			"commentCount": commentCount,
+			"likeCount":    likeCount,
+		},
+		"profile_image": func() string {
+			if user.ProfileImage == nil || *user.ProfileImage == "" {
+				return "https://newsclip.duckdns.org/v1/images/default_profile.png"
+			}
+			return *user.ProfileImage
+		}(),
+	}
+
+	return data, nil
+
+}
+
+func UpdateUserFields(user *models.User, fields map[string]interface{}) error {
+	return config.DB.Model(user).Updates(fields).Error
+}

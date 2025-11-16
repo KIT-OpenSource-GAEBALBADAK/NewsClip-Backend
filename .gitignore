@@ -5,7 +5,7 @@
 .env
 .env.*
 !.env.example
-
+/uploads
 
 # =========================================
 # Compiled binaries and packages
