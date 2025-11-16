@@ -23,6 +23,7 @@ func SetupRouter() *gin.Engine {
 			auth.POST("/refresh", controllers.RefreshToken)
 			auth.POST("/check-username", controllers.CheckUsername)
 
+			// 그룹에 미들웨어 적용
 			auth.POST("/setup-profile", middlewares.AuthMiddleware(), controllers.SetupProfile)
 		}
 
@@ -35,19 +36,17 @@ func SetupRouter() *gin.Engine {
 			news.POST("/:newsId/bookmark", middlewares.AuthMiddleware(), controllers.BookmarkNews)
 		}
 
+		// me 그룹에 인증 미들웨어를 붙임
 		me := v1.Group("/me", middlewares.AuthMiddleware())
 		{
-			v1.GET("/", middlewares.AuthMiddleware(), controllers.GetMyProfile)
-			v1.POST("/avatar", middlewares.AuthMiddleware(), controllers.UpdateProfile)
-
+			me.GET("/", controllers.GetMyProfile)
+			me.POST("/avatar", controllers.UpdateProfile) // 필요하면 UpdateAvatar로 이름 맞추세요
 			me.GET("/bookmarks", controllers.GetMyBookmarks)
 		}
 
 		community := v1.Group("/community")
 		{
 			community.GET("/posts", controllers.GetCommunityPosts)
-
-			// ⭐ 게시글 작성 추가
 			community.POST("/posts", middlewares.AuthMiddleware(), controllers.CreatePost)
 		}
 	}
