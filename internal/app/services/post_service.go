@@ -1,7 +1,9 @@
 package services
 
 import (
+	"newsclip/backend/internal/app/models"
 	"newsclip/backend/internal/app/repositories"
+	"time"
 )
 
 type CommunityPostDTO struct {
@@ -60,7 +62,7 @@ func GetCommunityPosts(postType string, page, size int) (*CommunityPostListRespo
 				Role:         post.User.Role,
 			},
 			Images:       imageURLs,
-			CreatedAt:    post.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			CreatedAt:    post.CreatedAt.Format(time.RFC3339),
 			ViewCount:    post.ViewCount,
 			LikeCount:    post.LikeCount,
 			DislikeCount: post.DislikeCount,
@@ -71,4 +73,27 @@ func GetCommunityPosts(postType string, page, size int) (*CommunityPostListRespo
 	return &CommunityPostListResponse{
 		Posts: result,
 	}, nil
+}
+
+func CreatePost(userID uint, title, content, category string, imageURLs []string) (*models.Post, error) {
+
+	post := models.Post{
+		UserID:   userID,
+		Title:    title,
+		Content:  content,
+		Category: category,
+		Section:  "general",
+	}
+
+	err := repositories.CreatePost(&post)
+	if err != nil {
+		return nil, err
+	}
+
+	// 이미지 저장
+	for _, img := range imageURLs {
+		repositories.CreatePostImage(post.ID, img)
+	}
+
+	return &post, nil
 }
