@@ -42,6 +42,7 @@ func SetupRouter() *gin.Engine {
 			me.GET("/", controllers.GetMyProfile)
 			me.POST("/avatar", controllers.UpdateProfile) // 필요하면 UpdateAvatar로 이름 맞추세요
 			me.GET("/bookmarks", controllers.GetMyBookmarks)
+			me.PUT("/settings/notifications", controllers.UpdateNotificationSettings)
 		}
 
 		community := v1.Group("/community")
