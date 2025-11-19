@@ -43,30 +43,35 @@ func MigrateDB() {
 	log.Println("🚀 Database migration completed!")
 }
 
-// === [수정] StartNewsPolling ===
+// === StartNewsPolling (스케줄러) ===
 func StartNewsPolling() {
 	log.Println("⏰ Starting background news polling...")
 
 	c := cron.New()
 
-	// [수정] "@every 30m" -> "@every 3h" (3시간마다)
+	// 3시간마다 실행
 	c.AddFunc("@every 3h", func() {
-		log.Println("📰 [Cron Job] Starting scheduled fetch for all categories...")
+		log.Println("📰 [Cron Job] 1. Fetching News...")
 
-		// FetchAllCategories는 이제 5개씩 가져옵니다.
+		// 1. 뉴스 수집
 		err := services.FetchAllCategories()
-
 		if err != nil {
-			log.Printf("🔥 [Cron Job] FAILED: %v\n", err)
-		} else {
-			log.Println("👍 [Cron Job] All categories fetch finished successfully.")
+			log.Printf("🔥 News Fetch Failed: %v", err)
+			return // 뉴스 수집 실패하면 쇼츠 생성도 중단
+		}
+
+		// 2. 쇼츠 생성 (뉴스 수집 완료 후 실행)
+		log.Println("🤖 [Cron Job] 2. Generating Shorts...")
+		err = services.GenerateShorts()
+		if err != nil {
+			log.Printf("🔥 Shorts Generation Failed: %v", err)
 		}
 	})
 
 	c.Start()
 }
 
-// === [신규] 오래된 뉴스 삭제 스케줄러 ===
+// === 오래된 뉴스 삭제 스케줄러 ===
 func StartCleanupScheduler() {
 	log.Println("🧹 Starting old news cleanup scheduler...")
 	c := cron.New()
@@ -74,7 +79,6 @@ func StartCleanupScheduler() {
 	// "@daily" = 매일 자정 00:00 에 실행
 	c.AddFunc("@daily", func() {
 		log.Println("🌙 [Cleaner Job] Running daily cleanup for news older than 14 days...")
-		// 에러는 서비스 내부에서 로깅
 		services.CleanupOldNews()
 	})
 
@@ -91,25 +95,35 @@ func main() {
 	// 3. 데이터베이스 마이그레이션 실행
 	MigrateDB()
 
-	// 4. === [신규] 스케줄러 시작 ===
-	// 4.1. (수정) go StartNewsPolling()
-	//    스케줄러는 백그라운드에서 실행
+	// 4. 스케줄러 시작 (백그라운드)
 	go StartNewsPolling()
-
-	// [신규] 뉴스 삭제 스케줄러 시작
 	go StartCleanupScheduler()
 
-	// 4.2. (추가) 서버 시작 시 1회 즉시 실행
-	log.Println("🚀 Running initial poll ONCE for all categories...")
+	// ==========================================
+	// 5. [테스트용] 서버 시작 시 즉시 1회 실행 로직
+	// ==========================================
+	log.Println("🚀 [TEST MODE] Running initial logic ONCE...")
+
+	// 5-1. 뉴스 수집 실행
+	log.Println("📰 1. Fetching News immediately...")
 	err := services.FetchAllCategories()
 	if err != nil {
 		log.Printf("🔥 INITIAL POLL FAILED: %v\n", err)
 	} else {
-		log.Println("👍 INITIAL POLL SUCCEEDED.")
-	}
-	// 5. 라우터 설정
-	router := routes.SetupRouter()
+		log.Println("✅ INITIAL POLL SUCCEEDED.")
 
-	// 6. 서버 실행
+		// 5-2. 쇼츠 생성 실행 (뉴스 수집 성공 시에만 실행)
+		log.Println("🤖 2. Generating Shorts immediately...")
+		err = services.GenerateShorts()
+		if err != nil {
+			log.Printf("🔥 INITIAL SHORTS GENERATION FAILED: %v\n", err)
+		} else {
+			log.Println("✅ INITIAL SHORTS GENERATION SUCCEEDED.")
+		}
+	}
+	// ==========================================
+
+	// 6. 라우터 설정 및 서버 실행
+	router := routes.SetupRouter()
 	router.Run(":8080")
 }
