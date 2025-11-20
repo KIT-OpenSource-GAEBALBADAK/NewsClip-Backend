@@ -105,22 +105,22 @@ func main() {
 	log.Println("🚀 [TEST MODE] Running initial logic ONCE...")
 
 	// 5-1. 뉴스 수집 실행
-	log.Println("📰 1. Fetching News immediately...")
-	err := services.FetchAllCategories()
-	if err != nil {
-		log.Printf("🔥 INITIAL POLL FAILED: %v\n", err)
-	} else {
-		log.Println("✅ INITIAL POLL SUCCEEDED.")
+	// log.Println("📰 1. Fetching News immediately...")
+	// err := services.FetchAllCategories()
+	// if err != nil {
+	// 	log.Printf("🔥 INITIAL POLL FAILED: %v\n", err)
+	// } else {
+	// 	log.Println("✅ INITIAL POLL SUCCEEDED.")
 
-		// 5-2. 쇼츠 생성 실행 (뉴스 수집 성공 시에만 실행)
-		log.Println("🤖 2. Generating Shorts immediately...")
-		err = services.GenerateShorts()
-		if err != nil {
-			log.Printf("🔥 INITIAL SHORTS GENERATION FAILED: %v\n", err)
-		} else {
-			log.Println("✅ INITIAL SHORTS GENERATION SUCCEEDED.")
-		}
-	}
+	// 	// 5-2. 쇼츠 생성 실행 (뉴스 수집 성공 시에만 실행)
+	// 	log.Println("🤖 2. Generating Shorts immediately...")
+	// 	err = services.GenerateShorts()
+	// 	if err != nil {
+	// 		log.Printf("🔥 INITIAL SHORTS GENERATION FAILED: %v\n", err)
+	// 	} else {
+	// 		log.Println("✅ INITIAL SHORTS GENERATION SUCCEEDED.")
+	// 	}
+	// }
 	// ==========================================
 
 	// 6. 라우터 설정 및 서버 실행

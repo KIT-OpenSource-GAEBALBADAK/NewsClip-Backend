@@ -1,6 +1,7 @@
 package services
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"newsclip/backend/config"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	"gorm.io/gorm"
 )
 
 // === [내부 함수] 뉴스 본문 크롤링 ===
@@ -207,4 +209,96 @@ func GetShortsFeed(size int, userID uint) ([]ShortFeedItemDTO, error) {
 	}
 
 	return feed, nil
+}
+
+// === 쇼츠 상호작용 서비스 ===
+func InteractWithShort(userID, shortID uint, newType string) (*InteractionResponseDTO, error) {
+
+	var finalResponse InteractionResponseDTO
+
+	// 트랜잭션 시작
+	err := config.DB.Transaction(func(tx *gorm.DB) error {
+
+		// 1. 기존 상호작용 조회
+		existingInteraction, err := repositories.FindShortInteraction(tx, userID, shortID)
+
+		var likeDelta, dislikeDelta int = 0, 0
+
+		// [시나리오 1] 최초 상호작용
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			newInteraction := &models.ShortInteraction{
+				UserID:          userID,
+				ShortID:         shortID,
+				InteractionType: newType,
+			}
+			if err := repositories.CreateShortInteraction(tx, newInteraction); err != nil {
+				return err
+			}
+
+			if newType == "like" {
+				likeDelta = 1
+			} else {
+				dislikeDelta = 1
+			}
+
+			finalResponse.IsLiked = (newType == "like")
+			finalResponse.IsDisliked = (newType == "dislike")
+
+			// [시나리오 2] 이미 존재함
+		} else if err == nil {
+			// [2-A] 취소 (같은 타입 클릭)
+			if existingInteraction.InteractionType == newType {
+				if err := repositories.DeleteShortInteraction(tx, &existingInteraction); err != nil {
+					return err
+				}
+				if newType == "like" {
+					likeDelta = -1
+				} else {
+					dislikeDelta = -1
+				}
+
+				finalResponse.IsLiked = false
+				finalResponse.IsDisliked = false
+			} else {
+				// [2-B] 전환 (다른 타입 클릭)
+				if err := repositories.UpdateShortInteraction(tx, &existingInteraction, newType); err != nil {
+					return err
+				}
+				if newType == "like" { // dislike -> like
+					likeDelta = 1
+					dislikeDelta = -1
+				} else { // like -> dislike
+					likeDelta = -1
+					dislikeDelta = 1
+				}
+
+				finalResponse.IsLiked = (newType == "like")
+				finalResponse.IsDisliked = (newType == "dislike")
+			}
+		} else {
+			return err // DB 에러
+		}
+
+		// 2. 카운트 업데이트
+		if err := repositories.UpdateShortCounts(tx, shortID, likeDelta, dislikeDelta); err != nil {
+			return err
+		}
+
+		// 3. 최신 카운트 조회
+		var short models.Short
+		if err := tx.Select("like_count", "dislike_count").First(&short, shortID).Error; err != nil {
+			return err
+		}
+
+		finalResponse.LikeCount = short.LikeCount
+		finalResponse.DislikeCount = short.DislikeCount
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &finalResponse, nil
 }
