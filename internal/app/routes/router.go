@@ -36,6 +36,12 @@ func SetupRouter() *gin.Engine {
 			news.POST("/:newsId/bookmark", middlewares.AuthMiddleware(), controllers.BookmarkNews)
 		}
 
+		shorts := v1.Group("/shorts")
+		{
+			// Optional 미들웨어 적용
+			shorts.GET("/", middlewares.AuthMiddlewareOptional(), controllers.GetShortsFeed)
+		}
+
 		// me 그룹에 인증 미들웨어를 붙임
 		me := v1.Group("/me", middlewares.AuthMiddleware())
 		{

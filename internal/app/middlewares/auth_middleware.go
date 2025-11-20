@@ -40,3 +40,28 @@ func AuthMiddleware() gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+// 토큰이 있으면 검증해서 userID 설정, 없으면 그냥 통과 (userID=0)
+func AuthMiddlewareOptional() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.Next() // 토큰 없으면 그냥 진행
+			return
+		}
+
+		// (기존 검증 로직 복사)
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			c.Next() // 형식이 이상하면 무시하고 진행
+			return
+		}
+
+		claims, err := utils.ValidateToken(parts[1])
+		if err == nil {
+			c.Set("userID", claims.UserID)
+		}
+
+		c.Next()
+	}
+}
