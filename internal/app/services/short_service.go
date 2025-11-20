@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"newsclip/backend/config"
 	"newsclip/backend/internal/app/models"
+	"newsclip/backend/internal/app/repositories"
 	"newsclip/backend/pkg/openai"
 	"strings"
 	"time"
@@ -137,4 +138,73 @@ func GenerateShorts() error {
 
 	log.Printf("🤖 [Shorts Generator] Finished. Generated %d new shorts.", generatedCount)
 	return nil
+}
+
+// === 쇼츠 피드 응답 DTO ===
+type ShortFeedItemDTO struct {
+	ShortID        uint   `json:"shortId"`
+	OriginalNewsID uint   `json:"originalNewsId"`
+	Title          string `json:"title"`
+	Summary        string `json:"summary"`
+	ImageURL       string `json:"imageUrl"`
+	LikeCount      int    `json:"likeCount"`
+	DislikeCount   int    `json:"dislikeCount"`
+	CommentCount   int    `json:"commentCount"` // (Comment 테이블 Count 로직은 생략, 현재 0)
+	IsLiked        bool   `json:"isLiked"`
+	IsDisliked     bool   `json:"isDisliked"`
+}
+
+// === 쇼츠 피드 조회 서비스 ===
+func GetShortsFeed(size int, userID uint) ([]ShortFeedItemDTO, error) {
+	// 1. 최신 쇼츠 목록 가져오기
+	shorts, err := repositories.FindRecentShorts(size)
+	if err != nil {
+		return nil, err
+	}
+
+	// 쇼츠가 없으면 빈 배열 반환
+	if len(shorts) == 0 {
+		return []ShortFeedItemDTO{}, nil
+	}
+
+	// 2. (로그인 유저라면) 상호작용 정보 가져오기
+	//    - 조회된 쇼츠들의 ID만 추출
+	shortIDs := make([]uint, len(shorts))
+	for i, s := range shorts {
+		shortIDs[i] = s.ID
+	}
+
+	//    - interactionMap[shortID] = "like" or "dislike"
+	interactionMap := make(map[uint]string)
+
+	if userID != 0 {
+		interactions, err := repositories.FindShortInteractionsByIDs(userID, shortIDs)
+		if err == nil {
+			for _, inter := range interactions {
+				interactionMap[inter.ShortID] = inter.InteractionType
+			}
+		}
+	}
+
+	// 3. DTO 변환
+	feed := make([]ShortFeedItemDTO, len(shorts))
+	for i, s := range shorts {
+		// 상호작용 상태 확인
+		interType, exists := interactionMap[s.ID]
+
+		feed[i] = ShortFeedItemDTO{
+			ShortID:        s.ID,
+			OriginalNewsID: s.NewsID,
+			Title:          s.Title,
+			Summary:        s.Summary,
+			ImageURL:       s.ImageURL,
+			LikeCount:      s.LikeCount,
+			DislikeCount:   s.DislikeCount,
+			// CommentCount: len(s.Comments), // 필요시 preload 또는 별도 카운트
+			IsLiked:    exists && interType == "like",
+			IsDisliked: exists && interType == "dislike",
+		}
+	}
+
+	return feed, nil
 }
