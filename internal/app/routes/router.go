@@ -38,8 +38,10 @@ func SetupRouter() *gin.Engine {
 
 		shorts := v1.Group("/shorts")
 		{
-			// Optional 미들웨어 적용
+			// 1. 피드 조회 (비로그인 가능 - Optional 미들웨어)
 			shorts.GET("/", middlewares.AuthMiddlewareOptional(), controllers.GetShortsFeed)
+			// 2. [신규] 상호작용 (로그인 필수 - AuthMiddleware)
+			shorts.POST("/:shortId/interact", middlewares.AuthMiddleware(), controllers.InteractShort)
 		}
 
 		// me 그룹에 인증 미들웨어를 붙임
