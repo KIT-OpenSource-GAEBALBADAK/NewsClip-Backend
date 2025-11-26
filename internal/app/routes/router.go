@@ -56,8 +56,11 @@ func SetupRouter() *gin.Engine {
 			me.POST("/avatar", controllers.UpdateProfile)
 			me.GET("/bookmarks", controllers.GetMyBookmarks)
 
-			// ⭐⭐ 7.4 선호 카테고리 조회 추가 ⭐⭐
+			// 7.4 선호 카테고리 조회
 			me.GET("/preferences/categories", controllers.GetPreferredCategories)
+
+			// ⭐⭐ 7.5 선호 카테고리 설정 ⭐⭐
+			me.PUT("/preferences/categories", controllers.SetPreferredCategories)
 		}
 
 		community := v1.Group("/community")

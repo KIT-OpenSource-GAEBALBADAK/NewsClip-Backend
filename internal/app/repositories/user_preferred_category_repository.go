@@ -19,3 +19,15 @@ func GetPreferredCategories(userID uint) ([]string, error) {
 
 	return result, nil
 }
+
+func ClearPreferredCategories(userID uint) error {
+	return config.DB.Where("user_id = ?", userID).Delete(&models.UserPreferredCategory{}).Error
+}
+
+func AddPreferredCategory(userID uint, category string) error {
+	item := models.UserPreferredCategory{
+		UserID:       userID,
+		CategoryName: category,
+	}
+	return config.DB.Create(&item).Error
+}
