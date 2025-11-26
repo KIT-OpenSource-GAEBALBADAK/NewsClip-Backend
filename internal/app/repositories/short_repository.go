@@ -7,11 +7,21 @@ import (
 	"gorm.io/gorm"
 )
 
-// 1. 최신 쇼츠 목록 조회 (Limit)
-func FindRecentShorts(limit int) ([]models.Short, error) {
+// 최신 쇼츠 목록 조회 (커서 페이징 적용)
+// cursorID가 0이면 가장 최신부터, 0보다 크면 그 ID보다 작은 것부터 조회
+func FindRecentShorts(limit int, cursorID uint) ([]models.Short, error) {
 	var shorts []models.Short
-	// 최신순(created_at DESC)으로 정렬하여 limit만큼 가져옴
-	result := config.DB.Order("created_at DESC").Limit(limit).Find(&shorts)
+
+	query := config.DB.Model(&models.Short{})
+
+	// [핵심 로직] 커서가 존재하면, 해당 ID보다 작은(오래된) 데이터를 찾음
+	if cursorID > 0 {
+		query = query.Where("id < ?", cursorID)
+	}
+
+	// ID 내림차순 (최신순) 정렬 후 Limit
+	result := query.Order("id DESC").Limit(limit).Find(&shorts)
+
 	return shorts, result.Error
 }
 

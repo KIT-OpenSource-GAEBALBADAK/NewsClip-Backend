@@ -156,29 +156,26 @@ type ShortFeedItemDTO struct {
 	IsDisliked     bool   `json:"isDisliked"`
 }
 
-// === 쇼츠 피드 조회 서비스 ===
-func GetShortsFeed(size int, userID uint) ([]ShortFeedItemDTO, error) {
-	// 1. 최신 쇼츠 목록 가져오기
-	shorts, err := repositories.FindRecentShorts(size)
+// 쇼츠 피드 조회 서비스 (cursorID 추가)
+func GetShortsFeed(size int, cursorID uint, userID uint) ([]ShortFeedItemDTO, error) {
+
+	// 1. 레포지토리 호출 (cursorID 전달)
+	shorts, err := repositories.FindRecentShorts(size, cursorID)
 	if err != nil {
 		return nil, err
 	}
 
-	// 쇼츠가 없으면 빈 배열 반환
 	if len(shorts) == 0 {
 		return []ShortFeedItemDTO{}, nil
 	}
 
 	// 2. (로그인 유저라면) 상호작용 정보 가져오기
-	//    - 조회된 쇼츠들의 ID만 추출
 	shortIDs := make([]uint, len(shorts))
 	for i, s := range shorts {
 		shortIDs[i] = s.ID
 	}
 
-	//    - interactionMap[shortID] = "like" or "dislike"
 	interactionMap := make(map[uint]string)
-
 	if userID != 0 {
 		interactions, err := repositories.FindShortInteractionsByIDs(userID, shortIDs)
 		if err == nil {
@@ -191,20 +188,18 @@ func GetShortsFeed(size int, userID uint) ([]ShortFeedItemDTO, error) {
 	// 3. DTO 변환
 	feed := make([]ShortFeedItemDTO, len(shorts))
 	for i, s := range shorts {
-		// 상호작용 상태 확인
 		interType, exists := interactionMap[s.ID]
 
 		feed[i] = ShortFeedItemDTO{
 			ShortID:        s.ID,
-			OriginalNewsID: s.NewsID,
+			OriginalNewsID: s.NewsID, // 모델에 정의된 필드명 확인 (NewsID vs NewsId)
 			Title:          s.Title,
 			Summary:        s.Summary,
 			ImageURL:       s.ImageURL,
 			LikeCount:      s.LikeCount,
 			DislikeCount:   s.DislikeCount,
-			// CommentCount: len(s.Comments), // 필요시 preload 또는 별도 카운트
-			IsLiked:    exists && interType == "like",
-			IsDisliked: exists && interType == "dislike",
+			IsLiked:        exists && interType == "like",
+			IsDisliked:     exists && interType == "dislike",
 		}
 	}
 
