@@ -18,7 +18,19 @@ func GetShortsFeed(c *gin.Context) {
 		size = 10
 	}
 
-	// 2. 사용자 ID 확인 (비로그인 유저도 볼 수 있으므로 에러 처리 안 함)
+	// 2. [신규] Query Parameter (cursorId) 파싱
+	// 값이 없으면 기본값 0 -> 첫 페이지(최신) 조회
+	cursorStr := c.Query("cursorId")
+	var cursorID uint = 0
+
+	if cursorStr != "" {
+		parsedID, err := strconv.ParseUint(cursorStr, 10, 32)
+		if err == nil {
+			cursorID = uint(parsedID)
+		}
+	}
+
+	// 3. 사용자 ID 확인 (Optional)
 	var userID uint = 0
 	if userIDValue, exists := c.Get("userID"); exists {
 		if id, ok := userIDValue.(uint); ok {
@@ -26,14 +38,14 @@ func GetShortsFeed(c *gin.Context) {
 		}
 	}
 
-	// 3. 서비스 호출
-	shortsFeed, err := services.GetShortsFeed(size, userID)
+	// 4. 서비스 호출 (cursorID 전달)
+	shortsFeed, err := services.GetShortsFeed(size, cursorID, userID)
 	if err != nil {
 		utils.SendError(c, http.StatusInternalServerError, "쇼츠 피드 조회 실패")
 		return
 	}
 
-	// 4. 응답
+	// 5. 응답
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
 		"message": "쇼츠 피드 조회 성공",
