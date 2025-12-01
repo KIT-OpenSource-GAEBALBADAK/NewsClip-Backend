@@ -40,6 +40,10 @@ func SetupRouter() *gin.Engine {
 			news.POST("/:newsId/bookmark", middlewares.AuthMiddleware(), controllers.BookmarkNews)
 			news.GET("/:newsId/comments", setTarget("news"), controllers.GetComments)
 			news.POST("/:newsId/comments", middlewares.AuthMiddleware(), setTarget("news"), controllers.CreateComment)
+
+			// ⭐⭐ [신규] 뉴스 추천 API ⭐⭐
+			// GET /v1/news/recommend?size=20
+			news.GET("/recommend", middlewares.AuthMiddleware(), controllers.GetRecommendedNews)
 		}
 
 		shorts := v1.Group("/shorts")
@@ -59,7 +63,7 @@ func SetupRouter() *gin.Engine {
 			// 7.4 선호 카테고리 조회
 			me.GET("/preferences/categories", controllers.GetPreferredCategories)
 
-			// ⭐⭐ 7.5 선호 카테고리 설정 ⭐⭐
+			// 7.5 선호 카테고리 설정
 			me.PUT("/preferences/categories", controllers.SetPreferredCategories)
 		}
 
