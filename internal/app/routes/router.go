@@ -43,7 +43,7 @@ func SetupRouter() *gin.Engine {
 
 			// ⭐⭐ [신규] 뉴스 추천 API ⭐⭐
 			// GET /v1/news/recommend?size=20
-			news.GET("/recommend", middlewares.AuthMiddleware(), controllers.GetRecommendedNews)
+			news.GET("/recommendations/popup", middlewares.AuthMiddleware(), controllers.GetRecommendedNews)
 		}
 
 		shorts := v1.Group("/shorts")
