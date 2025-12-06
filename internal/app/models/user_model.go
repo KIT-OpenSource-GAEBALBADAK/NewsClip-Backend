@@ -38,8 +38,8 @@ type User struct {
 	ShortComments     []ShortComment     `gorm:"foreignKey:UserID" json:"-"`
 
 	// 5. 커뮤니티 및 기타 (기존 유지)
-	Posts         []Post         `gorm:"foreignKey:UserID" json:"-"`
-	PostLikes     []PostLike     `gorm:"foreignKey:UserID" json:"-"`
+	Posts []Post `gorm:"foreignKey:UserID" json:"-"`
+	// PostLikes     []PostLike     `gorm:"foreignKey:UserID" json:"-"`
 	PostComments  []PostComment  `gorm:"foreignKey:UserID" json:"-"`
 	AlertKeywords []AlertKeyword `gorm:"foreignKey:UserID" json:"-"`
 	Notifications []Notification `gorm:"foreignKey:UserID" json:"-"`
