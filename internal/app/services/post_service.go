@@ -1,9 +1,13 @@
 package services
 
 import (
+	"errors"
+	"newsclip/backend/config"
 	"newsclip/backend/internal/app/models"
 	"newsclip/backend/internal/app/repositories"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 type CommunityPostDTO struct {
@@ -96,4 +100,103 @@ func CreatePost(userID uint, title, content, category string, imageURLs []string
 	}
 
 	return &post, nil
+}
+
+// === 게시글 상호작용 응답 DTO ===
+type PostInteractionResponseDTO struct {
+	IsLiked      bool `json:"is_liked"`
+	IsDisliked   bool `json:"is_disliked"`
+	LikeCount    int  `json:"like_count"`
+	DislikeCount int  `json:"dislike_count"`
+}
+
+// === 게시글 상호작용 서비스 ===
+func InteractWithPost(userID, postID uint, newType string) (*PostInteractionResponseDTO, error) {
+
+	var finalResponse PostInteractionResponseDTO
+
+	err := config.DB.Transaction(func(tx *gorm.DB) error {
+
+		// 1. 기존 상호작용 조회
+		existingInteraction, err := repositories.FindPostInteraction(tx, userID, postID)
+
+		var likeDelta, dislikeDelta int = 0, 0
+
+		// [시나리오 1] 최초 상호작용
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			newInteraction := &models.PostInteraction{
+				UserID:          userID,
+				PostID:          postID,
+				InteractionType: newType,
+			}
+			if err := repositories.CreatePostInteraction(tx, newInteraction); err != nil {
+				return err
+			}
+
+			if newType == "like" {
+				likeDelta = 1
+			} else {
+				dislikeDelta = 1
+			}
+
+			finalResponse.IsLiked = (newType == "like")
+			finalResponse.IsDisliked = (newType == "dislike")
+
+			// [시나리오 2] 이미 존재함
+		} else if err == nil {
+			// [2-A] 취소 (같은 타입 클릭)
+			if existingInteraction.InteractionType == newType {
+				if err := repositories.DeletePostInteraction(tx, &existingInteraction); err != nil {
+					return err
+				}
+				if newType == "like" {
+					likeDelta = -1
+				} else {
+					dislikeDelta = -1
+				}
+
+				finalResponse.IsLiked = false
+				finalResponse.IsDisliked = false
+			} else {
+				// [2-B] 전환 (다른 타입 클릭)
+				if err := repositories.UpdatePostInteraction(tx, &existingInteraction, newType); err != nil {
+					return err
+				}
+				if newType == "like" { // dislike -> like
+					likeDelta = 1
+					dislikeDelta = -1
+				} else { // like -> dislike
+					likeDelta = -1
+					dislikeDelta = 1
+				}
+
+				finalResponse.IsLiked = (newType == "like")
+				finalResponse.IsDisliked = (newType == "dislike")
+			}
+		} else {
+			return err
+		}
+
+		// 2. 카운트 업데이트
+		if err := repositories.UpdatePostCounts(tx, postID, likeDelta, dislikeDelta); err != nil {
+			return err
+		}
+
+		// 3. 최신 카운트 조회
+		var post models.Post
+		if err := tx.Select("like_count", "dislike_count").First(&post, postID).Error; err != nil {
+			return err
+		}
+
+		finalResponse.LikeCount = post.LikeCount
+		finalResponse.DislikeCount = post.DislikeCount
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &finalResponse, nil
 }

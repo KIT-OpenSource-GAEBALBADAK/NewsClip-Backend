@@ -54,7 +54,7 @@ func GetUserProfile(userID uint) (map[string]interface{}, error) {
 
 	config.DB.Model(&models.Post{}).Where("user_id = ?", userID).Count(&postCount)
 	config.DB.Model(&models.PostComment{}).Where("user_id = ?", userID).Count(&commentCount)
-	config.DB.Model(&models.PostLike{}).Where("user_id = ?", userID).Count(&likeCount)
+	// config.DB.Model(&models.PostLike{}).Where("user_id = ?", userID).Count(&likeCount)
 
 	data := map[string]interface{}{
 		"nickname": user.Nickname,

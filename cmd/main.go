@@ -24,7 +24,7 @@ func MigrateDB() {
 		// &models.ShortLike{},     // [삭제]
 		&models.ShortComment{},
 		&models.Post{},
-		&models.PostLike{},
+		// &models.PostLike{},		// [삭제]
 		&models.PostComment{},
 		&models.AlertKeyword{},
 		&models.Notification{},
@@ -36,6 +36,8 @@ func MigrateDB() {
 		&models.PostImage{},
 		&models.NewsInteraction{},
 		&models.ShortInteraction{},
+
+		&models.PostInteraction{},
 	)
 	if err != nil {
 		log.Fatal("Failed to migrate database")

@@ -86,3 +86,50 @@ func CreatePost(c *gin.Context) {
 		"data":    post,
 	})
 }
+
+// === 게시글 상호작용 컨트롤러 ===
+func InteractPost(c *gin.Context) {
+	// 1. UserID 확인
+	userIDValue, exists := c.Get("userID")
+	if !exists {
+		utils.SendError(c, http.StatusUnauthorized, "인증 정보가 없습니다.")
+		return
+	}
+	userID, _ := userIDValue.(uint)
+
+	// 2. PostID 파싱
+	postIDStr := c.Param("postId")
+	postID64, err := strconv.ParseUint(postIDStr, 10, 32)
+	if err != nil {
+		utils.SendError(c, http.StatusBadRequest, "잘못된 게시글 ID입니다.")
+		return
+	}
+	postID := uint(postID64)
+
+	// 3. Body 파싱 (services.InteractionRequest 재사용)
+	// (services 패키지에 InteractionRequest가 public으로 정의되어 있어야 함)
+	var req services.InteractionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.SendError(c, http.StatusBadRequest, "잘못된 요청 형식입니다.")
+		return
+	}
+
+	if req.InteractionType != "like" && req.InteractionType != "dislike" {
+		utils.SendError(c, http.StatusBadRequest, "interaction_type은 'like' 또는 'dislike'여야 합니다.")
+		return
+	}
+
+	// 4. 서비스 호출
+	responseDTO, err := services.InteractWithPost(userID, postID, req.InteractionType)
+	if err != nil {
+		utils.SendError(c, http.StatusInternalServerError, "상호작용 처리에 실패했습니다.")
+		return
+	}
+
+	// 5. 응답
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "상호작용이 처리되었습니다.",
+		"data":    responseDTO,
+	})
+}
