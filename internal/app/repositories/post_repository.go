@@ -69,3 +69,31 @@ func UpdatePostCounts(tx *gorm.DB, postID uint, likeDelta int, dislikeDelta int)
 		"dislike_count": gorm.Expr("dislike_count + ?", dislikeDelta),
 	}).Error
 }
+
+// 게시글 단건 조회 (삭제 권한 확인용)
+func FindPostByID(postID uint) (models.Post, error) {
+	var post models.Post
+	err := config.DB.First(&post, postID).Error
+	return post, err
+}
+
+// 게시글 삭제
+func DeletePost(post *models.Post) error {
+	return config.DB.Delete(post).Error
+}
+
+// === [7.7] 내가 쓴 게시글 목록 조회 ===
+func GetMyPosts(userID uint, page, size int) ([]models.Post, error) {
+	var posts []models.Post
+
+	offset := (page - 1) * size
+
+	err := config.DB.
+		Where("user_id = ?", userID).
+		Order("created_at DESC").
+		Limit(size).
+		Offset(offset).
+		Find(&posts).Error
+
+	return posts, err
+}

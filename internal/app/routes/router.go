@@ -65,6 +65,8 @@ func SetupRouter() *gin.Engine {
 
 			// 7.5 선호 카테고리 설정
 			me.PUT("/preferences/categories", controllers.SetPreferredCategories)
+			me.GET("/posts", controllers.GetMyPosts)
+			me.GET("/comments", controllers.GetMyComments)
 		}
 
 		community := v1.Group("/community")
@@ -75,6 +77,7 @@ func SetupRouter() *gin.Engine {
 			community.POST("/posts/:postId/comments", middlewares.AuthMiddleware(), setTarget("post"), controllers.CreateComment)
 			// 게시글 상호작용
 			community.POST("/posts/:postId/interact", middlewares.AuthMiddleware(), controllers.InteractPost)
+			community.DELETE("/posts/:postId", middlewares.AuthMiddleware(), controllers.DeleteMyPost)
 		}
 	}
 
