@@ -200,3 +200,28 @@ func InteractWithPost(userID, postID uint, newType string) (*PostInteractionResp
 
 	return &finalResponse, nil
 }
+
+// === [5.4] 내가 쓴 게시글 삭제 ===
+func DeleteMyPost(userID, postID uint) error {
+
+	// 1. 게시글 조회
+	post, err := repositories.FindPostByID(postID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errors.New("게시글을 찾을 수 없습니다")
+		}
+		return err
+	}
+
+	// 2. 작성자 검증
+	if post.UserID != userID {
+		return errors.New("본인이 작성한 게시글만 삭제할 수 있습니다")
+	}
+
+	// 3. 게시글 삭제
+	if err := repositories.DeletePost(&post); err != nil {
+		return err
+	}
+
+	return nil
+}
