@@ -81,3 +81,19 @@ func FindPostByID(postID uint) (models.Post, error) {
 func DeletePost(post *models.Post) error {
 	return config.DB.Delete(post).Error
 }
+
+// === [7.7] 내가 쓴 게시글 목록 조회 ===
+func GetMyPosts(userID uint, page, size int) ([]models.Post, error) {
+	var posts []models.Post
+
+	offset := (page - 1) * size
+
+	err := config.DB.
+		Where("user_id = ?", userID).
+		Order("created_at DESC").
+		Limit(size).
+		Offset(offset).
+		Find(&posts).Error
+
+	return posts, err
+}
