@@ -103,3 +103,41 @@ func convertToDTO(id uint, content string, createdAt time.Time, user models.User
 		},
 	}
 }
+
+// === [7.8] 내가 쓴 댓글 목록 DTO ===
+type MyCommentItemDTO struct {
+	CommentID  uint   `json:"commentId"`
+	Content    string `json:"content"`
+	TargetType string `json:"targetType"`
+	TargetID   uint   `json:"targetId"`
+	CreatedAt  string `json:"createdAt"`
+}
+
+type MyCommentListResponseDTO struct {
+	Comments []MyCommentItemDTO `json:"comments"`
+}
+
+// === [7.8] 내가 쓴 댓글 목록 서비스 ===
+func GetMyComments(userID uint, page, size int) (*MyCommentListResponseDTO, error) {
+
+	rows, err := repositories.GetMyComments(userID, page, size)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]MyCommentItemDTO, len(rows))
+
+	for i, row := range rows {
+		result[i] = MyCommentItemDTO{
+			CommentID:  uint(row["id"].(int64)),
+			Content:    row["content"].(string),
+			TargetType: row["target_type"].(string),
+			TargetID:   uint(row["target_id"].(int64)),
+			CreatedAt:  row["created_at"].(time.Time).Format(time.RFC3339),
+		}
+	}
+
+	return &MyCommentListResponseDTO{
+		Comments: result,
+	}, nil
+}

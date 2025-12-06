@@ -96,3 +96,28 @@ func GetPostComments(postID uint) ([]models.PostComment, error) {
 		Find(&comments)
 	return comments, result.Error
 }
+
+// === [7.8] 내가 쓴 댓글 목록 조회 ===
+func GetMyComments(userID uint, page, size int) ([]map[string]interface{}, error) {
+	var results []map[string]interface{}
+	offset := (page - 1) * size
+
+	sql := `
+	SELECT id, content, created_at, 'news' AS target_type, news_id AS target_id
+	FROM news_comments
+	WHERE user_id = ?
+	UNION ALL
+	SELECT id, content, created_at, 'short' AS target_type, short_id AS target_id
+	FROM short_comments
+	WHERE user_id = ?
+	UNION ALL
+	SELECT id, content, created_at, 'post' AS target_type, post_id AS target_id
+	FROM post_comments
+	WHERE user_id = ?
+	ORDER BY created_at DESC
+	LIMIT ? OFFSET ?
+	`
+
+	err := config.DB.Raw(sql, userID, userID, userID, size, offset).Scan(&results).Error
+	return results, err
+}
