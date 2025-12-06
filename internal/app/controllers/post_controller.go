@@ -133,3 +133,36 @@ func InteractPost(c *gin.Context) {
 		"data":    responseDTO,
 	})
 }
+
+// === [5.4] 내가 쓴 게시글 삭제 ===
+func DeleteMyPost(c *gin.Context) {
+
+	userID := c.GetUint("userID")
+
+	postIDStr := c.Param("postId")
+	postID64, err := strconv.ParseUint(postIDStr, 10, 32)
+	if err != nil {
+		utils.SendError(c, http.StatusBadRequest, "잘못된 게시글 ID입니다.")
+		return
+	}
+	postID := uint(postID64)
+
+	err = services.DeleteMyPost(userID, postID)
+	if err != nil {
+		if err.Error() == "게시글을 찾을 수 없습니다" {
+			utils.SendError(c, http.StatusNotFound, err.Error())
+			return
+		}
+		if err.Error() == "본인이 작성한 게시글만 삭제할 수 있습니다" {
+			utils.SendError(c, http.StatusForbidden, err.Error())
+			return
+		}
+		utils.SendError(c, http.StatusInternalServerError, "게시글 삭제 실패")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "게시글이 삭제되었습니다.",
+	})
+}

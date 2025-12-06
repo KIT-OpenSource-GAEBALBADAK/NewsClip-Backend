@@ -127,3 +127,35 @@ func GetMyBookmarks(c *gin.Context) {
 		"data":    responseDTO,
 	})
 }
+
+// ==========================
+// 7.7 내가 쓴 게시글 목록 조회
+// ==========================
+func GetMyPosts(c *gin.Context) {
+
+	userID := c.GetUint("userID")
+
+	pageStr := c.DefaultQuery("page", "1")
+	sizeStr := c.DefaultQuery("size", "10")
+
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+	size, err := strconv.Atoi(sizeStr)
+	if err != nil || size < 1 {
+		size = 10
+	}
+
+	resp, err := services.GetMyPosts(userID, page, size)
+	if err != nil {
+		utils.SendError(c, http.StatusInternalServerError, "내 게시글 목록 조회 실패")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "내가 쓴 게시글 목록 조회 성공",
+		"data":    resp,
+	})
+}
