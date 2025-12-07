@@ -75,6 +75,7 @@ func SetupRouter() *gin.Engine {
 			community.POST("/posts/:postId/comments", middlewares.AuthMiddleware(), setTarget("post"), controllers.CreateComment)
 			// 게시글 상호작용
 			community.POST("/posts/:postId/interact", middlewares.AuthMiddleware(), controllers.InteractPost)
+			community.DELETE("/posts/:postId", middlewares.AuthMiddleware(), controllers.DeleteMyPost)
 		}
 	}
 
