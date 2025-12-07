@@ -225,3 +225,48 @@ func DeleteMyPost(userID, postID uint) error {
 
 	return nil
 }
+
+// === [7.7] 내가 쓴 게시글 목록 조회 DTO ===
+type MyPostItemDTO struct {
+	PostID       uint   `json:"postId"`
+	Title        string `json:"title"`
+	Content      string `json:"content"`
+	Category     string `json:"category"`
+	CreatedAt    string `json:"createdAt"`
+	ViewCount    int    `json:"viewCount"`
+	LikeCount    int    `json:"likeCount"`
+	DislikeCount int    `json:"dislikeCount"`
+	CommentCount int    `json:"commentCount"`
+}
+
+type MyPostListResponseDTO struct {
+	Posts []MyPostItemDTO `json:"posts"`
+}
+
+// === [7.7] 내가 쓴 게시글 목록 조회 서비스 ===
+func GetMyPosts(userID uint, page, size int) (*MyPostListResponseDTO, error) {
+
+	posts, err := repositories.GetMyPosts(userID, page, size)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]MyPostItemDTO, len(posts))
+	for i, post := range posts {
+		result[i] = MyPostItemDTO{
+			PostID:       post.ID,
+			Title:        post.Title,
+			Content:      post.Content,
+			Category:     post.Category,
+			CreatedAt:    post.CreatedAt.Format(time.RFC3339),
+			ViewCount:    post.ViewCount,
+			LikeCount:    post.LikeCount,
+			DislikeCount: post.DislikeCount,
+			CommentCount: post.CommentCount,
+		}
+	}
+
+	return &MyPostListResponseDTO{
+		Posts: result,
+	}, nil
+}
