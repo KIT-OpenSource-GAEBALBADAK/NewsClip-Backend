@@ -434,3 +434,49 @@ func SendEmailVerification(emailAddr string, authType string) error {
 
 	return nil
 }
+
+// === 인증번호 검증 서비스 ===
+// 반환값: (reset_token, error) -> signup일 땐 token이 빈 문자열입니다.
+func VerifyEmailCode(emailAddr string, inputCode string, authType string) (string, error) {
+	// 1. Redis에서 저장된 코드 조회
+	redisKey := "auth:" + authType + ":" + emailAddr
+	storedCode, err := redis.GetData(redisKey)
+
+	// 코드가 없으면 (만료되었거나 키가 없음)
+	if err != nil {
+		return "", errors.New("expired_or_invalid")
+	}
+
+	// 2. 코드 비교
+	if storedCode != inputCode {
+		return "", errors.New("mismatch")
+	}
+
+	// 3. 인증 성공 후 처리 (인증번호는 재사용 못하게 삭제)
+	redis.DeleteData(redisKey)
+
+	// 4. 타입별 분기 처리
+	if authType == "signup" {
+		// 회원가입용은 단순히 성공 여부만 중요하므로 여기서 끝
+		// (보안 강화: 실제로는 "verified:email" 같은 키를 Redis에 저장해서 회원가입 API가 체크하게 하면 더 좋습니다)
+		return "", nil
+	} else if authType == "reset" {
+		// 비밀번호 찾기용은 '토큰'을 발급해야 함
+		token, err := utils.GenerateRandomToken()
+		if err != nil {
+			return "", err
+		}
+
+		// [중요] 토큰 저장 (Key: "reset_token:토큰값", Value: "이메일", TTL: 10분)
+		// 나중에 비밀번호 변경 API에서 이 토큰을 받으면, 누구의 이메일인지 역추적하기 위함입니다.
+		tokenKey := "reset_token:" + token
+		err = redis.SetData(tokenKey, emailAddr, 10*time.Minute)
+		if err != nil {
+			return "", err
+		}
+
+		return token, nil
+	}
+
+	return "", errors.New("invalid_type")
+}

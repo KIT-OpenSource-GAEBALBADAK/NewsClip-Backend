@@ -35,6 +35,7 @@ func SetupRouter() *gin.Engine {
 			emailGroup := auth.Group("/email")
 			{
 				emailGroup.POST("/send-code", controllers.SendEmailCode)
+				emailGroup.POST("/verify-code", controllers.VerifyEmailCode)
 			}
 		}
 
