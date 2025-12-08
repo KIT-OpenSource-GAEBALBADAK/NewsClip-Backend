@@ -30,6 +30,12 @@ func SetupRouter() *gin.Engine {
 			auth.POST("/refresh", controllers.RefreshToken)
 			auth.POST("/check-username", controllers.CheckUsername)
 			auth.POST("/setup-profile", middlewares.AuthMiddleware(), controllers.SetupProfile)
+
+			// 이메일 관련
+			emailGroup := auth.Group("/email")
+			{
+				emailGroup.POST("/send-code", controllers.SendEmailCode)
+			}
 		}
 
 		news := v1.Group("/news")
@@ -41,7 +47,6 @@ func SetupRouter() *gin.Engine {
 			news.GET("/:newsId/comments", setTarget("news"), controllers.GetComments)
 			news.POST("/:newsId/comments", middlewares.AuthMiddleware(), setTarget("news"), controllers.CreateComment)
 
-			// ⭐⭐ [신규] 뉴스 추천 API ⭐⭐
 			// GET /v1/news/recommend?size=20
 			news.GET("/recommendations/popup", middlewares.AuthMiddleware(), controllers.GetRecommendedNews)
 		}

@@ -6,6 +6,7 @@ import (
 	"newsclip/backend/internal/app/models"
 	"newsclip/backend/internal/app/routes"
 	"newsclip/backend/internal/app/services"
+	"newsclip/backend/pkg/redis"
 
 	"github.com/robfig/cron/v3"
 )
@@ -93,6 +94,8 @@ func main() {
 
 	// 2. 데이터베이스 연결
 	config.ConnectDB()
+
+	redis.ConnectRedis() // [추가] Redis 연결
 
 	// 3. 데이터베이스 마이그레이션 실행
 	MigrateDB()
