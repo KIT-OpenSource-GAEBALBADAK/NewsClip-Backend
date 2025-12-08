@@ -191,3 +191,50 @@ func GetMyComments(c *gin.Context) {
 		"data":    resp,
 	})
 }
+
+// === 비밀번호 변경 요청 구조체 ===
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password" binding:"required"`
+	NewPassword     string `json:"new_password" binding:"required,min=6"`
+}
+
+// === 비밀번호 변경 컨트롤러 ===
+func ChangePassword(c *gin.Context) {
+	// 1. UserID 추출
+	userIDValue, exists := c.Get("userID")
+	if !exists {
+		utils.SendError(c, http.StatusUnauthorized, "인증 정보가 없습니다.")
+		return
+	}
+	userID := userIDValue.(uint)
+
+	// 2. Body 파싱
+	var req ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.SendError(c, http.StatusBadRequest, "요청 형식이 올바르지 않습니다 (비밀번호는 6자 이상).")
+		return
+	}
+
+	// 3. 서비스 호출
+	err := services.ChangePassword(userID, req.CurrentPassword, req.NewPassword)
+	if err != nil {
+		if err.Error() == "wrong_password" {
+			utils.SendError(c, http.StatusBadRequest, "현재 비밀번호가 일치하지 않습니다.")
+			return
+		}
+		if err.Error() == "no_password_set" {
+			utils.SendError(c, http.StatusBadRequest, "비밀번호가 설정되지 않은 계정입니다 (소셜 로그인 등).")
+			return
+		}
+
+		utils.SendError(c, http.StatusInternalServerError, "비밀번호 변경 실패")
+		return
+	}
+
+	// 4. 성공 응답
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "비밀번호가 변경되었습니다.",
+		"data":    nil,
+	})
+}

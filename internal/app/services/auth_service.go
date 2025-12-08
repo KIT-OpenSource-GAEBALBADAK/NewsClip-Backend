@@ -528,3 +528,35 @@ func ResetPassword(emailAddr string, resetToken string, newPassword string) erro
 
 	return nil
 }
+
+// === 비밀번호 변경 (로그인 상태) ===
+func ChangePassword(userID uint, currentPassword, newPassword string) error {
+	// 1. 유저 조회
+	user, err := repositories.FindUserByID(userID)
+	if err != nil {
+		return err
+	}
+
+	// 2. 현재 비밀번호 검증
+	// 2-1. 소셜 로그인 유저 등 비밀번호가 아예 없는 경우 방어
+	if user.PasswordHash == nil {
+		return errors.New("no_password_set")
+	}
+
+	// 2-2. 입력한 현재 비밀번호와 DB의 해시값 비교
+	// (utils.CheckPasswordHash는 bcrypt.CompareHashAndPassword를 래핑한 함수여야 합니다)
+	if !utils.CheckPasswordHash(currentPassword, *user.PasswordHash) {
+		return errors.New("wrong_password")
+	}
+
+	// 3. 새 비밀번호 해싱
+	hashedPassword, err := utils.HashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+
+	// 4. DB 업데이트 (주의: 컬럼명 "password_hash")
+	return repositories.UpdateUserFields(&user, map[string]interface{}{
+		"password_hash": hashedPassword,
+	})
+}
