@@ -37,6 +37,12 @@ func SetupRouter() *gin.Engine {
 				emailGroup.POST("/send-code", controllers.SendEmailCode)
 				emailGroup.POST("/verify-code", controllers.VerifyEmailCode)
 			}
+
+			// 비밀번호 관련 그룹
+			passwordGroup := auth.Group("/password")
+			{
+				passwordGroup.POST("/reset", controllers.ResetPassword)
+			}
 		}
 
 		news := v1.Group("/news")

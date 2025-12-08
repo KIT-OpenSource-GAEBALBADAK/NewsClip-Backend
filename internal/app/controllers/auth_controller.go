@@ -308,3 +308,45 @@ func VerifyEmailCode(c *gin.Context) {
 		})
 	}
 }
+
+// 비밀번호 재설정 요청 구조체
+type ResetPasswordRequest struct {
+	Email       string `json:"email" binding:"required,email"`
+	ResetToken  string `json:"reset_token" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=6"` // 최소길이 예시
+}
+
+// 비밀번호 재설정 컨트롤러
+func ResetPassword(c *gin.Context) {
+	var req ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.SendError(c, http.StatusBadRequest, "요청 형식이 올바르지 않습니다.")
+		return
+	}
+
+	err := services.ResetPassword(req.Email, req.ResetToken, req.NewPassword)
+
+	if err != nil {
+		if err.Error() == "invalid_token" {
+			utils.SendError(c, http.StatusBadRequest, "유효하지 않거나 만료된 토큰입니다.")
+			return
+		}
+		if err.Error() == "email_mismatch" {
+			utils.SendError(c, http.StatusBadRequest, "이메일 정보가 일치하지 않습니다.")
+			return
+		}
+		if err.Error() == "user_not_found" {
+			utils.SendError(c, http.StatusNotFound, "사용자를 찾을 수 없습니다.")
+			return
+		}
+
+		utils.SendError(c, http.StatusInternalServerError, "비밀번호 변경 실패: "+err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "비밀번호가 성공적으로 변경되었습니다. 다시 로그인해주세요.",
+		"data":    nil,
+	})
+}
