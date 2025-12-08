@@ -480,3 +480,51 @@ func VerifyEmailCode(emailAddr string, inputCode string, authType string) (strin
 
 	return "", errors.New("invalid_type")
 }
+
+// === 비밀번호 재설정 서비스 ===
+func ResetPassword(emailAddr string, resetToken string, newPassword string) error {
+	// 1. Redis에서 토큰 검증
+	// 저장할 때 Key: "reset_token:토큰값", Value: "이메일" 로 저장했었습니다.
+	redisKey := "reset_token:" + resetToken
+	storedEmail, err := redis.GetData(redisKey)
+
+	// 토큰이 만료되었거나 없을 때
+	if err != nil {
+		return errors.New("invalid_token")
+	}
+
+	// 2. 토큰의 주인(이메일)과 요청한 이메일이 일치하는지 확인
+	// (다른 사람의 이메일로 비밀번호를 바꾸려는 시도 차단)
+	if storedEmail != emailAddr {
+		return errors.New("email_mismatch")
+	}
+
+	// 3. 유저 조회
+	user, err := repositories.FindUserByUsername(emailAddr)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errors.New("user_not_found")
+		}
+		return err
+	}
+
+	// 4. 새 비밀번호 해싱
+	hashedPassword, err := utils.HashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+
+	// 5. DB 업데이트
+	err = repositories.UpdateUserFields(&user, map[string]interface{}{
+		"password_hash": hashedPassword,
+	})
+
+	if err != nil {
+		return err
+	}
+
+	// 6. 사용한 토큰 삭제 (재사용 방지)
+	redis.DeleteData(redisKey)
+
+	return nil
+}
