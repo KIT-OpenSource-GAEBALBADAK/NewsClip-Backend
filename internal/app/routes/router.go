@@ -13,6 +13,13 @@ func SetupRouter() *gin.Engine {
 	router.Static("/v1/uploads", "./uploads")
 	router.Static("/v1/images", "./static/images")
 
+	setTarget := func(targetType string) gin.HandlerFunc {
+		return func(c *gin.Context) {
+			c.Set("targetType", targetType)
+			c.Next()
+		}
+	}
+
 	v1 := router.Group("/v1")
 	{
 		auth := v1.Group("/auth")
@@ -22,32 +29,70 @@ func SetupRouter() *gin.Engine {
 			auth.POST("/social", controllers.SocialLogin)
 			auth.POST("/refresh", controllers.RefreshToken)
 			auth.POST("/check-username", controllers.CheckUsername)
-
-			// 그룹에 미들웨어 적용
 			auth.POST("/setup-profile", middlewares.AuthMiddleware(), controllers.SetupProfile)
+
+			// 이메일 관련
+			emailGroup := auth.Group("/email")
+			{
+				emailGroup.POST("/send-code", controllers.SendEmailCode)
+				emailGroup.POST("/verify-code", controllers.VerifyEmailCode)
+			}
+
+			// 비밀번호 관련 그룹
+			passwordGroup := auth.Group("/password")
+			{
+				passwordGroup.POST("/reset", controllers.ResetPassword)
+			}
 		}
 
 		news := v1.Group("/news")
 		{
 			news.GET("/", controllers.GetNewsList)
 			news.GET("/:newsId", controllers.GetNewsDetail)
-
 			news.POST("/:newsId/interact", middlewares.AuthMiddleware(), controllers.InteractNews)
 			news.POST("/:newsId/bookmark", middlewares.AuthMiddleware(), controllers.BookmarkNews)
+			news.GET("/:newsId/comments", setTarget("news"), controllers.GetComments)
+			news.POST("/:newsId/comments", middlewares.AuthMiddleware(), setTarget("news"), controllers.CreateComment)
+
+			// GET /v1/news/recommend?size=20
+			news.GET("/recommendations/popup", middlewares.AuthMiddleware(), controllers.GetRecommendedNews)
 		}
 
-		// me 그룹에 인증 미들웨어를 붙임
+		shorts := v1.Group("/shorts")
+		{
+			shorts.GET("/", middlewares.AuthMiddlewareOptional(), controllers.GetShortsFeed)
+			shorts.POST("/:shortId/interact", middlewares.AuthMiddleware(), controllers.InteractShort)
+			shorts.GET("/:shortId/comments", setTarget("short"), controllers.GetComments)
+			shorts.POST("/:shortId/comments", middlewares.AuthMiddleware(), setTarget("short"), controllers.CreateComment)
+		}
+
 		me := v1.Group("/me", middlewares.AuthMiddleware())
 		{
 			me.GET("/", controllers.GetMyProfile)
-			me.POST("/avatar", controllers.UpdateProfile) // 필요하면 UpdateAvatar로 이름 맞추세요
+			me.POST("/avatar", controllers.UpdateProfile)
 			me.GET("/bookmarks", controllers.GetMyBookmarks)
+
+			// 7.4 선호 카테고리 조회
+			me.GET("/preferences/categories", controllers.GetPreferredCategories)
+
+			// 7.5 선호 카테고리 설정
+			me.PUT("/preferences/categories", controllers.SetPreferredCategories)
+			me.GET("/posts", controllers.GetMyPosts)
+			me.GET("/comments", controllers.GetMyComments)
+
+			// 비밀번호 변경
+			me.PUT("/password", controllers.ChangePassword)
 		}
 
 		community := v1.Group("/community")
 		{
 			community.GET("/posts", controllers.GetCommunityPosts)
 			community.POST("/posts", middlewares.AuthMiddleware(), controllers.CreatePost)
+			community.GET("/posts/:postId/comments", setTarget("post"), controllers.GetComments)
+			community.POST("/posts/:postId/comments", middlewares.AuthMiddleware(), setTarget("post"), controllers.CreateComment)
+			// 게시글 상호작용
+			community.POST("/posts/:postId/interact", middlewares.AuthMiddleware(), controllers.InteractPost)
+			community.DELETE("/posts/:postId", middlewares.AuthMiddleware(), controllers.DeleteMyPost)
 		}
 	}
 

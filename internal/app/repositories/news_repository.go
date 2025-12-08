@@ -196,3 +196,102 @@ func GetBookmarkedNews(userID uint, page int, size int) ([]models.News, int64, i
 
 	return newsList, totalCount, totalPages, nil
 }
+
+// ====================================================================
+//  아래부터는 "뉴스 추천"을 위한 통계/후보 조회용 함수들 (신규 추가)
+// ====================================================================
+
+// [신규] 사용자 북마크 카테고리 통계
+//
+//	key: category, value: count
+func GetBookmarkCategoryStats(userID uint) (map[string]int64, error) {
+	type resultRow struct {
+		Category string
+		Count    int64
+	}
+
+	var rows []resultRow
+	err := config.DB.Table("news_bookmarks AS b").
+		Joins("JOIN news AS n ON n.id = b.news_id").
+		Where("b.user_id = ?", userID).
+		Select("n.category AS category, COUNT(*) AS count").
+		Group("n.category").
+		Scan(&rows).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	stats := make(map[string]int64, len(rows))
+	for _, r := range rows {
+		stats[r.Category] = r.Count
+	}
+
+	return stats, nil
+}
+
+// [신규] 사용자 상호작용(좋아요/싫어요) 카테고리 통계
+//
+//	likeStats[category] / dislikeStats[category]
+func GetInteractionCategoryStats(userID uint) (map[string]int64, map[string]int64, error) {
+	type resultRow struct {
+		Category        string
+		InteractionType string
+		Count           int64
+	}
+
+	var rows []resultRow
+	err := config.DB.Table("news_interactions AS ni").
+		Joins("JOIN news AS n ON n.id = ni.news_id").
+		Where("ni.user_id = ?", userID).
+		Select("n.category AS category, ni.interaction_type AS interaction_type, COUNT(*) AS count").
+		Group("n.category, ni.interaction_type").
+		Scan(&rows).Error
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	likeStats := make(map[string]int64)
+	dislikeStats := make(map[string]int64)
+
+	for _, r := range rows {
+		if r.InteractionType == "like" {
+			likeStats[r.Category] = r.Count
+		} else if r.InteractionType == "dislike" {
+			dislikeStats[r.Category] = r.Count
+		}
+	}
+
+	return likeStats, dislikeStats, nil
+}
+
+// [신규] 추천 후보 뉴스 조회
+//   - 최근 daysWithin 일 이내
+//   - 해당 사용자가 아직 좋아요/싫어요/북마크하지 않은 뉴스만
+//   - 최신순으로 최대 limit 개
+func FindNewsCandidatesForRecommendation(userID uint, daysWithin int, limit int) ([]models.News, error) {
+	var newsList []models.News
+
+	cutoff := time.Now().AddDate(0, 0, -daysWithin)
+
+	// 서브쿼리: 사용자가 상호작용한 뉴스 ID
+	subInteractions := config.DB.Table("news_interactions").
+		Select("news_id").
+		Where("user_id = ?", userID)
+
+	// 서브쿼리: 사용자가 북마크한 뉴스 ID
+	subBookmarks := config.DB.Table("news_bookmarks").
+		Select("news_id").
+		Where("user_id = ?", userID)
+
+	err := config.DB.
+		Where("created_at > ?", cutoff).
+		Where("id NOT IN (?)", subInteractions).
+		Where("id NOT IN (?)", subBookmarks).
+		Order("published_at DESC").
+		Limit(limit).
+		Find(&newsList).Error
+
+	return newsList, err
+}

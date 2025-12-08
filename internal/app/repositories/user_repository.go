@@ -32,7 +32,7 @@ func CreateUser(user *models.User) error {
 	return config.DB.Create(user).Error
 }
 
-// [신규] 유저 프로필 업데이트 (닉네임, 프로필 이미지)
+// 유저 프로필 업데이트 (닉네임, 프로필 이미지)
 func UpdateUserProfile(user *models.User, nickname, profileImage string) error {
 	result := config.DB.Model(user).Updates(models.User{
 		Nickname:     &nickname,
@@ -54,7 +54,7 @@ func GetUserProfile(userID uint) (map[string]interface{}, error) {
 
 	config.DB.Model(&models.Post{}).Where("user_id = ?", userID).Count(&postCount)
 	config.DB.Model(&models.PostComment{}).Where("user_id = ?", userID).Count(&commentCount)
-	config.DB.Model(&models.PostLike{}).Where("user_id = ?", userID).Count(&likeCount)
+	// config.DB.Model(&models.PostLike{}).Where("user_id = ?", userID).Count(&likeCount)
 
 	data := map[string]interface{}{
 		"nickname": user.Nickname,
@@ -76,6 +76,57 @@ func GetUserProfile(userID uint) (map[string]interface{}, error) {
 
 }
 
-func UpdateUserFields(user *models.User, fields map[string]interface{}) error {
-	return config.DB.Model(user).Updates(fields).Error
+// === [신규/보완] 유저 정보 부분 업데이트 (Map 사용) ===
+func UpdateUserFields(user *models.User, updates map[string]interface{}) error {
+	// GORM의 Updates는 map을 받아서 zero value(0, "", false)도 업데이트 가능합니다.
+	return config.DB.Model(user).Updates(updates).Error
+}
+
+// === 사용자 활동 통계 조회 DTO ===
+type UserStats struct {
+	PostCount          int64
+	CommentCount       int64
+	TotalReceivedLikes int64
+}
+
+// === 사용자 활동 통계 계산 함수 ===
+func GetUserStats(userID uint) (UserStats, error) {
+	var stats UserStats
+	var count int64
+
+	// 1. 내가 쓴 게시글 수 (posts)
+	if err := config.DB.Model(&models.Post{}).Where("user_id = ?", userID).Count(&stats.PostCount).Error; err != nil {
+		return stats, err
+	}
+
+	// 2. 내가 쓴 댓글 수 합계 (news + shorts + posts)
+	// 2-1. 뉴스 댓글
+	if err := config.DB.Model(&models.NewsComment{}).Where("user_id = ?", userID).Count(&count).Error; err != nil {
+		return stats, err
+	}
+	stats.CommentCount += count
+
+	// 2-2. 쇼츠 댓글
+	if err := config.DB.Model(&models.ShortComment{}).Where("user_id = ?", userID).Count(&count).Error; err != nil {
+		return stats, err
+	}
+	stats.CommentCount += count
+
+	// 2-3. 게시글 댓글
+	if err := config.DB.Model(&models.PostComment{}).Where("user_id = ?", userID).Count(&count).Error; err != nil {
+		return stats, err
+	}
+	stats.CommentCount += count
+
+	// 3. 내가 쓴 게시글이 받은 총 좋아요 수
+	// (posts 테이블의 like_count 컬럼의 합)
+	// 결과가 NULL일 경우(글이 없을 때) 0으로 처리하기 위해 COALESCE 사용
+	if err := config.DB.Model(&models.Post{}).
+		Where("user_id = ?", userID).
+		Select("COALESCE(SUM(like_count), 0)").
+		Scan(&stats.TotalReceivedLikes).Error; err != nil {
+		return stats, err
+	}
+
+	return stats, nil
 }

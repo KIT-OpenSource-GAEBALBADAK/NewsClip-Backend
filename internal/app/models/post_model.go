@@ -1,8 +1,6 @@
 package models
 
 import (
-	"time"
-
 	"gorm.io/gorm"
 )
 
@@ -25,20 +23,20 @@ type Post struct {
 	CommentCount int `gorm:"default:0"`
 
 	// 관계 설정
-	User     User          `json:"user"`                            // 작성자 정보 포함
-	Images   []PostImage   `gorm:"foreignKey:PostID" json:"images"` // [신규]
-	Likes    []PostLike    `gorm:"foreignKey:PostID" json:"-"`
+	User   User        `json:"user"`                            // 작성자 정보 포함
+	Images []PostImage `gorm:"foreignKey:PostID" json:"images"` // [신규]
+	// Likes    []PostLike    `gorm:"foreignKey:PostID" json:"-"`
 	Comments []PostComment `gorm:"foreignKey:PostID" json:"-"`
 }
 
 // PostLike: 게시글 좋아요 (post_likes)
-type PostLike struct {
-	UserID    uint `gorm:"primaryKey"`
-	PostID    uint `gorm:"primaryKey"`
-	CreatedAt time.Time
-	User      User // belongs to User
-	Post      Post // belongs to Post
-}
+// type PostLike struct {
+// 	UserID    uint `gorm:"primaryKey"`
+// 	PostID    uint `gorm:"primaryKey"`
+// 	CreatedAt time.Time
+// 	User      User // belongs to User
+// 	Post      Post // belongs to Post
+// }
 
 // PostComment: 게시글 댓글 (post_comments)
 type PostComment struct {

@@ -7,34 +7,43 @@ import (
 // User: 사용자 기본 정보 (users)
 type User struct {
 	ID           uint      `gorm:"primaryKey" json:"id"`
-	Username     *string   `gorm:"type:varchar(30);unique" json:"username"`      // [수정] 포인터 타입
-	PasswordHash *string   `gorm:"type:text" json:"-"`                           // [수정] 포인터 타입
-	// Name 필드 삭제
-	Nickname     *string   `gorm:"type:varchar(30)" json:"nickname"`          // [수정] 포인터 타입
-	ProfileImage *string   `gorm:"type:text" json:"profile_image"`          // [수정] 포인터 타입
+	Username     *string   `gorm:"type:varchar(30);unique" json:"username"`
+	PasswordHash *string   `gorm:"type:text" json:"-"`
+	Nickname     *string   `gorm:"type:varchar(30)" json:"nickname"`
+	ProfileImage *string   `gorm:"type:text" json:"profile_image"`
 	Role         string    `gorm:"type:varchar(20);default:'user'" json:"role"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 
-	// === [추가] 소셜 로그인 정보 ===
-	Provider   *string `gorm:"type:varchar(50)" json:"provider"`  // 예: "kakao", "google"
-	ProviderID *string `gorm:"type:varchar(255);unique" json:"-"` // 소셜 서비스의 유저 고유 ID
+	// 소셜 로그인 정보
+	Provider   *string `gorm:"type:varchar(50)" json:"provider"`
+	ProviderID *string `gorm:"type:varchar(255);unique" json:"-"`
 
-	// 관계 설정 (User가 소유한 것들)
-	UserSetting   UserSetting    `gorm:"foreignKey:UserID" json:"-"`
-	Sessions      []Session      `gorm:"foreignKey:UserID" json:"-"`
-	NewsLikes     []NewsLike     `gorm:"foreignKey:UserID" json:"-"`
-	NewsBookmarks []NewsBookmark `gorm:"foreignKey:UserID" json:"-"`
-	NewsComments  []NewsComment  `gorm:"foreignKey:UserID" json:"-"`
-	ShortLikes    []ShortLike    `gorm:"foreignKey:UserID" json:"-"`
-	ShortComments []ShortComment `gorm:"foreignKey:UserID" json:"-"`
-	Posts         []Post         `gorm:"foreignKey:UserID" json:"-"`
-	PostLikes     []PostLike     `gorm:"foreignKey:UserID" json:"-"`
+	// === [관계 설정 수정] ===
+
+	// 1. 설정 및 세션 (기존 유지)
+	UserSetting UserSetting `gorm:"foreignKey:UserID" json:"-"`
+	Sessions    []Session   `gorm:"foreignKey:UserID" json:"-"`
+
+	// 2. [신규] 선호 카테고리 (P1 추천용)
+	PreferredCategories []UserPreferredCategory `gorm:"foreignKey:UserID" json:"-"`
+
+	// 3. [수정] 뉴스 상호작용 (Like -> Interaction)
+	NewsInteractions []NewsInteraction `gorm:"foreignKey:UserID" json:"-"`
+	NewsBookmarks    []NewsBookmark    `gorm:"foreignKey:UserID" json:"-"`
+	NewsComments     []NewsComment     `gorm:"foreignKey:UserID" json:"-"`
+
+	// 4. [수정] 쇼츠 상호작용 (Like -> Interaction)
+	ShortInteractions []ShortInteraction `gorm:"foreignKey:UserID" json:"-"`
+	ShortComments     []ShortComment     `gorm:"foreignKey:UserID" json:"-"`
+
+	// 5. 커뮤니티 및 기타 (기존 유지)
+	Posts []Post `gorm:"foreignKey:UserID" json:"-"`
+	// PostLikes     []PostLike     `gorm:"foreignKey:UserID" json:"-"`
 	PostComments  []PostComment  `gorm:"foreignKey:UserID" json:"-"`
 	AlertKeywords []AlertKeyword `gorm:"foreignKey:UserID" json:"-"`
 	Notifications []Notification `gorm:"foreignKey:UserID" json:"-"`
 	Reported      []Report       `gorm:"foreignKey:ReporterID" json:"-"`
-	Bans          []Ban          `gorm:"foreignKey:UserID" json:"-"`
 }
 
 // UserSetting: 사용자 설정 (user_settings)

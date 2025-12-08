@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// === [수정] 회원가입 ===
+// === 회원가입 ===
 func Register(c *gin.Context) {
 	var req services.RegisterRequest // 수정된 DTO
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -42,7 +42,7 @@ func Register(c *gin.Context) {
 	})
 }
 
-// === [변경 없음] 로그인 ===
+// === 로그인 ===
 func Login(c *gin.Context) {
 	var req services.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -67,7 +67,7 @@ func Login(c *gin.Context) {
 	})
 }
 
-// === [변경 없음] 소셜 로그인 ===
+// === 소셜 로그인 ===
 func SocialLogin(c *gin.Context) {
 	var req services.SocialLoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -88,7 +88,7 @@ func SocialLogin(c *gin.Context) {
 	})
 }
 
-// === [변경 없음] 토큰 재발급 ===
+// === 토큰 재발급 ===
 func RefreshToken(c *gin.Context) {
 	var req struct {
 		RefreshToken string `json:"refreshToken" binding:"required"`
@@ -112,7 +112,7 @@ func RefreshToken(c *gin.Context) {
 	})
 }
 
-// === [신규] 아이디 중복 체크 ===
+// === 아이디 중복 체크 ===
 func CheckUsername(c *gin.Context) {
 	var req services.CheckUsernameRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -141,7 +141,7 @@ func CheckUsername(c *gin.Context) {
 	}
 }
 
-// === [신규] 최초 프로필 설정 ===
+// === 최초 프로필 설정 ===
 func SetupProfile(c *gin.Context) {
 	// 1. 미들웨어에서 userID 가져오기
 	userIDValue, exists := c.Get("userID")
@@ -154,7 +154,6 @@ func SetupProfile(c *gin.Context) {
 		utils.SendError(c, http.StatusUnauthorized, "인증 정보가 잘못되었습니다.")
 		return
 	}
-
 
 	// 2. Form 데이터 파싱
 	nickname := c.PostForm("nickname")
@@ -211,5 +210,143 @@ func SetupProfile(c *gin.Context) {
 				"profile_image": user.ProfileImage,
 			},
 		},
+	})
+}
+
+// 요청 바디 구조체
+type EmailVerificationRequest struct {
+	Email string `json:"email" binding:"required,email"`
+	Type  string `json:"type" binding:"required"` // "signup" or "reset"
+}
+
+// 인증번호 전송 컨트롤러
+func SendEmailCode(c *gin.Context) {
+	var req EmailVerificationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.SendError(c, http.StatusBadRequest, "이메일 형식이 올바르지 않습니다.")
+		return
+	}
+
+	err := services.SendEmailVerification(req.Email, req.Type)
+	if err != nil {
+		if err.Error() == "already_exists" {
+			utils.SendError(c, http.StatusConflict, "이미 가입된 이메일입니다.")
+			return
+		}
+		if err.Error() == "not_found" {
+			utils.SendError(c, http.StatusNotFound, "가입되지 않은 이메일입니다.")
+			return
+		}
+		if err.Error() == "invalid_type" {
+			utils.SendError(c, http.StatusBadRequest, "잘못된 인증 타입입니다.")
+			return
+		}
+
+		// 그 외(Redis, SMTP 에러 등)
+		utils.SendError(c, http.StatusInternalServerError, "인증번호 전송에 실패했습니다: "+err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "인증코드가 전송되었습니다. 이메일을 확인해주세요.",
+		"data": gin.H{
+			"expiration_time": 180,
+		},
+	})
+}
+
+// 인증번호 검증 요청 구조체
+type VerifyCodeRequest struct {
+	Email string `json:"email" binding:"required,email"`
+	Code  string `json:"code" binding:"required"`
+	Type  string `json:"type" binding:"required"` // "signup" or "reset"
+}
+
+// 인증번호 검증 컨트롤러
+func VerifyEmailCode(c *gin.Context) {
+	var req VerifyCodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.SendError(c, http.StatusBadRequest, "잘못된 요청 형식입니다.")
+		return
+	}
+
+	// 서비스 호출
+	resetToken, err := services.VerifyEmailCode(req.Email, req.Code, req.Type)
+
+	if err != nil {
+		if err.Error() == "expired_or_invalid" {
+			utils.SendError(c, http.StatusBadRequest, "인증번호가 만료되었거나 잘못되었습니다.")
+			return
+		}
+		if err.Error() == "mismatch" {
+			utils.SendError(c, http.StatusBadRequest, "인증번호가 일치하지 않습니다.")
+			return
+		}
+		utils.SendError(c, http.StatusInternalServerError, "인증 처리에 실패했습니다.")
+		return
+	}
+
+	// 응답 분기 (signup vs reset)
+	if req.Type == "signup" {
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "success",
+			"message": "이메일 인증이 완료되었습니다.",
+			"data": gin.H{
+				"is_verified": true,
+			},
+		})
+	} else {
+		// reset 타입일 경우 토큰 포함
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "success",
+			"message": "인증에 성공했습니다. 비밀번호를 재설정해주세요.",
+			"data": gin.H{
+				"is_verified": true,
+				"reset_token": resetToken,
+			},
+		})
+	}
+}
+
+// 비밀번호 재설정 요청 구조체
+type ResetPasswordRequest struct {
+	Email       string `json:"email" binding:"required,email"`
+	ResetToken  string `json:"reset_token" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=6"` // 최소길이 예시
+}
+
+// 비밀번호 재설정 컨트롤러
+func ResetPassword(c *gin.Context) {
+	var req ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.SendError(c, http.StatusBadRequest, "요청 형식이 올바르지 않습니다.")
+		return
+	}
+
+	err := services.ResetPassword(req.Email, req.ResetToken, req.NewPassword)
+
+	if err != nil {
+		if err.Error() == "invalid_token" {
+			utils.SendError(c, http.StatusBadRequest, "유효하지 않거나 만료된 토큰입니다.")
+			return
+		}
+		if err.Error() == "email_mismatch" {
+			utils.SendError(c, http.StatusBadRequest, "이메일 정보가 일치하지 않습니다.")
+			return
+		}
+		if err.Error() == "user_not_found" {
+			utils.SendError(c, http.StatusNotFound, "사용자를 찾을 수 없습니다.")
+			return
+		}
+
+		utils.SendError(c, http.StatusInternalServerError, "비밀번호 변경 실패: "+err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "비밀번호가 성공적으로 변경되었습니다. 다시 로그인해주세요.",
+		"data":    nil,
 	})
 }

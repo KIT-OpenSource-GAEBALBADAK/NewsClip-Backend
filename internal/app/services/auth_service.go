@@ -5,17 +5,21 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"newsclip/backend/config"
 	"newsclip/backend/internal/app/models"
 	"newsclip/backend/internal/app/repositories"
 	"newsclip/backend/internal/app/utils"
+	"newsclip/backend/pkg/email"
+	"newsclip/backend/pkg/redis"
+	"strconv"
 	"time"
 
 	"gorm.io/gorm"
 )
 
-// === [수정] 회원가입 요청 DTO === 25/10/31
+// === 회원가입 요청 DTO === 25/10/31
 type RegisterRequest struct {
 	// Name     string `json:"name" binding:"required"` // 삭제
 	Username string `json:"username" binding:"required"`
@@ -23,7 +27,7 @@ type RegisterRequest struct {
 	// Nickname string `json:"nickname" binding:"required"` // 삭제
 }
 
-// === [수정] 회원가입 로직 === 25/10/31
+// === 회원가입 로직 === 25/10/31
 func RegisterUser(req RegisterRequest) (models.User, error) {
 	// 1. username 중복 체크
 	_, err := repositories.FindUserByUsername(req.Username)
@@ -61,10 +65,6 @@ func RegisterUser(req RegisterRequest) (models.User, error) {
 	return newUser, nil
 }
 
-// --- 회원가입 (기존 코드 끝) ---
-
-// === [추가] ===
-
 // 로그인 요청 DTO
 type LoginRequest struct {
 	Username string `json:"username" binding:"required"`
@@ -77,7 +77,7 @@ type LoginResponse struct {
 	RefreshToken string `json:"refreshToken"`
 }
 
-// === [수정] 로그인 로직 === 25/10/31
+// === 로그인 로직 === 25/10/31
 func LoginUser(req LoginRequest) (LoginResponse, error) {
 	var response LoginResponse
 
@@ -130,8 +130,6 @@ func LoginUser(req LoginRequest) (LoginResponse, error) {
 	return response, nil
 }
 
-// === [추가] ===
-
 // 소셜 로그인 요청 DTO
 type SocialLoginRequest struct {
 	Provider string `json:"provider" binding:"required"`
@@ -149,7 +147,7 @@ type KakaoUserResponse struct {
 	} `json:"kakao_account"`
 }
 
-// [신규] (구글) 25/11/04
+// (구글) 25/11/04
 type GoogleUserResponse struct {
 	Sub      string `json:"sub"`     // 구글 유저 고유 ID
 	Audience string `json:"aud"`     // 토큰 발급 대상 (우리 앱 Client ID)
@@ -191,7 +189,7 @@ func getKakaoUserInfo(token string) (*KakaoUserResponse, error) {
 	return &kakaoUser, nil
 }
 
-// === [신규] (구글) 유저 정보 요청 === 25/11/04
+// === (구글) 유저 정보 요청 === 25/11/04
 // 구글은 ID Token을 검증하는 'tokeninfo' 엔드포인트를 사용합니다.
 func getGoogleUserInfo(token string) (*GoogleUserResponse, error) {
 	// 1. 구글 tokeninfo 엔드포인트에 GET 요청
@@ -306,7 +304,7 @@ func ProcessSocialLogin(req SocialLoginRequest) (LoginResponse, error) {
 	return response, nil
 }
 
-// === [수정] Refresh Token 재발급 ===
+// === Refresh Token 재발급 ===
 func RefreshTokens(refreshToken string) (LoginResponse, error) {
 	var response LoginResponse
 
@@ -356,7 +354,7 @@ func RefreshTokens(refreshToken string) (LoginResponse, error) {
 	return response, nil
 }
 
-// === [신규] 아이디 중복 체크 ===
+// === 아이디 중복 체크 ===
 type CheckUsernameRequest struct {
 	Username string `json:"username" binding:"required"`
 }
@@ -372,7 +370,7 @@ func CheckUsernameAvailability(req CheckUsernameRequest) (bool, error) {
 	return false, err // 기타 DB 에러
 }
 
-// === [신규] 최초 프로필 설정 ===
+// === 최초 프로필 설정 ===
 // (컨트롤러에서 파일 처리 후 imageURL을 받아옴)
 func SetupProfile(userID uint, nickname string, imageURL string) (models.User, error) {
 	// 1. 유저 정보 가져오기
@@ -395,4 +393,170 @@ func SetupProfile(userID uint, nickname string, imageURL string) (models.User, e
 	user.Nickname = &nickname
 	user.ProfileImage = &imageURL
 	return user, nil
+}
+
+// === 인증번호 전송 서비스 ===
+func SendEmailVerification(emailAddr string, authType string) error {
+	// 1. 유저 존재 여부 확인
+	_, err := repositories.FindUserByUsername(emailAddr) // Username == Email 이라고 가정
+
+	if authType == "signup" {
+		// 회원가입: 이미 유저가 있으면 에러 (409)
+		if err == nil {
+			return errors.New("already_exists") // 컨트롤러에서 409 처리
+		}
+	} else if authType == "reset" {
+		// 비번찾기: 유저가 없으면 에러 (404)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errors.New("not_found") // 컨트롤러에서 404 처리
+		}
+	} else {
+		return errors.New("invalid_type")
+	}
+
+	// 2. 6자리 인증코드 생성 (100000 ~ 999999)
+	rand.Seed(time.Now().UnixNano())
+	code := strconv.Itoa(rand.Intn(900000) + 100000)
+
+	// 3. Redis에 저장 (Key: "auth:타입:이메일", Value: 코드, TTL: 3분)
+	// 예: auth:signup:test@naver.com -> 123456
+	redisKey := "auth:" + authType + ":" + emailAddr
+	err = redis.SetData(redisKey, code, 3*time.Minute)
+	if err != nil {
+		return err
+	}
+
+	// 4. 이메일 전송
+	err = email.SendVerificationCode(emailAddr, code)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// === 인증번호 검증 서비스 ===
+// 반환값: (reset_token, error) -> signup일 땐 token이 빈 문자열입니다.
+func VerifyEmailCode(emailAddr string, inputCode string, authType string) (string, error) {
+	// 1. Redis에서 저장된 코드 조회
+	redisKey := "auth:" + authType + ":" + emailAddr
+	storedCode, err := redis.GetData(redisKey)
+
+	// 코드가 없으면 (만료되었거나 키가 없음)
+	if err != nil {
+		return "", errors.New("expired_or_invalid")
+	}
+
+	// 2. 코드 비교
+	if storedCode != inputCode {
+		return "", errors.New("mismatch")
+	}
+
+	// 3. 인증 성공 후 처리 (인증번호는 재사용 못하게 삭제)
+	redis.DeleteData(redisKey)
+
+	// 4. 타입별 분기 처리
+	if authType == "signup" {
+		// 회원가입용은 단순히 성공 여부만 중요하므로 여기서 끝
+		// (보안 강화: 실제로는 "verified:email" 같은 키를 Redis에 저장해서 회원가입 API가 체크하게 하면 더 좋습니다)
+		return "", nil
+	} else if authType == "reset" {
+		// 비밀번호 찾기용은 '토큰'을 발급해야 함
+		token, err := utils.GenerateRandomToken()
+		if err != nil {
+			return "", err
+		}
+
+		// [중요] 토큰 저장 (Key: "reset_token:토큰값", Value: "이메일", TTL: 10분)
+		// 나중에 비밀번호 변경 API에서 이 토큰을 받으면, 누구의 이메일인지 역추적하기 위함입니다.
+		tokenKey := "reset_token:" + token
+		err = redis.SetData(tokenKey, emailAddr, 10*time.Minute)
+		if err != nil {
+			return "", err
+		}
+
+		return token, nil
+	}
+
+	return "", errors.New("invalid_type")
+}
+
+// === 비밀번호 재설정 서비스 ===
+func ResetPassword(emailAddr string, resetToken string, newPassword string) error {
+	// 1. Redis에서 토큰 검증
+	// 저장할 때 Key: "reset_token:토큰값", Value: "이메일" 로 저장했었습니다.
+	redisKey := "reset_token:" + resetToken
+	storedEmail, err := redis.GetData(redisKey)
+
+	// 토큰이 만료되었거나 없을 때
+	if err != nil {
+		return errors.New("invalid_token")
+	}
+
+	// 2. 토큰의 주인(이메일)과 요청한 이메일이 일치하는지 확인
+	// (다른 사람의 이메일로 비밀번호를 바꾸려는 시도 차단)
+	if storedEmail != emailAddr {
+		return errors.New("email_mismatch")
+	}
+
+	// 3. 유저 조회
+	user, err := repositories.FindUserByUsername(emailAddr)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errors.New("user_not_found")
+		}
+		return err
+	}
+
+	// 4. 새 비밀번호 해싱
+	hashedPassword, err := utils.HashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+
+	// 5. DB 업데이트
+	err = repositories.UpdateUserFields(&user, map[string]interface{}{
+		"password_hash": hashedPassword,
+	})
+
+	if err != nil {
+		return err
+	}
+
+	// 6. 사용한 토큰 삭제 (재사용 방지)
+	redis.DeleteData(redisKey)
+
+	return nil
+}
+
+// === 비밀번호 변경 (로그인 상태) ===
+func ChangePassword(userID uint, currentPassword, newPassword string) error {
+	// 1. 유저 조회
+	user, err := repositories.FindUserByID(userID)
+	if err != nil {
+		return err
+	}
+
+	// 2. 현재 비밀번호 검증
+	// 2-1. 소셜 로그인 유저 등 비밀번호가 아예 없는 경우 방어
+	if user.PasswordHash == nil {
+		return errors.New("no_password_set")
+	}
+
+	// 2-2. 입력한 현재 비밀번호와 DB의 해시값 비교
+	// (utils.CheckPasswordHash는 bcrypt.CompareHashAndPassword를 래핑한 함수여야 합니다)
+	if !utils.CheckPasswordHash(currentPassword, *user.PasswordHash) {
+		return errors.New("wrong_password")
+	}
+
+	// 3. 새 비밀번호 해싱
+	hashedPassword, err := utils.HashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+
+	// 4. DB 업데이트 (주의: 컬럼명 "password_hash")
+	return repositories.UpdateUserFields(&user, map[string]interface{}{
+		"password_hash": hashedPassword,
+	})
 }
