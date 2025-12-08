@@ -79,6 +79,9 @@ func SetupRouter() *gin.Engine {
 			me.PUT("/preferences/categories", controllers.SetPreferredCategories)
 			me.GET("/posts", controllers.GetMyPosts)
 			me.GET("/comments", controllers.GetMyComments)
+
+			// 비밀번호 변경
+			me.PUT("/password", controllers.ChangePassword)
 		}
 
 		community := v1.Group("/community")
