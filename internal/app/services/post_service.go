@@ -10,23 +10,28 @@ import (
 	"gorm.io/gorm"
 )
 
+// === DTO에 is_liked, is_disliked 추가 ===
 type CommunityPostDTO struct {
-	PostID       uint      `json:"postId"`
+	PostID       uint      `json:"post_id"`
 	Title        string    `json:"title"`
 	Content      string    `json:"content"`
 	Category     string    `json:"category"`
 	Author       AuthorDTO `json:"author"`
 	Images       []string  `json:"images"`
-	CreatedAt    string    `json:"createdAt"`
-	ViewCount    int       `json:"viewCount"`
-	LikeCount    int       `json:"likeCount"`
-	DislikeCount int       `json:"dislikeCount"`
-	CommentCount int       `json:"commentCount"`
+	CreatedAt    string    `json:"created_at"`
+	ViewCount    int       `json:"view_count"`
+	LikeCount    int       `json:"like_count"`
+	DislikeCount int       `json:"dislike_count"`
+	CommentCount int       `json:"comment_count"`
+
+	// 상호작용 여부 (snake_case 적용)
+	IsLiked    bool `json:"is_liked"`
+	IsDisliked bool `json:"is_disliked"`
 }
 
 type AuthorDTO struct {
 	Nickname     *string `json:"nickname"`
-	ProfileImage string  `json:"profileImage"`
+	ProfileImage string  `json:"profile_image"`
 	Role         string  `json:"role"`
 }
 
@@ -34,13 +39,32 @@ type CommunityPostListResponse struct {
 	Posts []CommunityPostDTO `json:"posts"`
 }
 
-func GetCommunityPosts(postType string, page, size int) (*CommunityPostListResponse, error) {
+// === userID 파라미터 추가 ===
+func GetCommunityPosts(postType string, page, size int, userID uint) (*CommunityPostListResponse, error) {
 
+	// 1. 게시글 목록 조회
 	posts, err := repositories.GetPostsWithRelations(postType, page, size)
 	if err != nil {
 		return nil, err
 	}
 
+	// 2. 상호작용 상태 조회 (로그인 유저인 경우)
+	postIDs := make([]uint, len(posts))
+	for i, post := range posts {
+		postIDs[i] = post.ID
+	}
+
+	interactionMap := make(map[uint]string) // postID -> "like" or "dislike"
+
+	if userID != 0 && len(postIDs) > 0 {
+		// repositories에 추가했던 Batch Query 함수 호출
+		interactions, _ := repositories.GetPostInteractionsByIDs(userID, postIDs)
+		for _, inter := range interactions {
+			interactionMap[inter.PostID] = inter.InteractionType
+		}
+	}
+
+	// 3. DTO 변환
 	var result []CommunityPostDTO
 
 	for _, post := range posts {
@@ -54,6 +78,9 @@ func GetCommunityPosts(postType string, page, size int) (*CommunityPostListRespo
 		for i, img := range post.Images {
 			imageURLs[i] = img.ImageURL
 		}
+
+		// Map에서 상호작용 상태 확인
+		interType, hasInteraction := interactionMap[post.ID]
 
 		result = append(result, CommunityPostDTO{
 			PostID:   post.ID,
@@ -71,6 +98,10 @@ func GetCommunityPosts(postType string, page, size int) (*CommunityPostListRespo
 			LikeCount:    post.LikeCount,
 			DislikeCount: post.DislikeCount,
 			CommentCount: post.CommentCount,
+
+			// 상태 주입
+			IsLiked:    hasInteraction && interType == "like",
+			IsDisliked: hasInteraction && interType == "dislike",
 		})
 	}
 
