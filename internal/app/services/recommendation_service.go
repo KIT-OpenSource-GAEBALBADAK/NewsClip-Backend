@@ -54,7 +54,7 @@ func GetRecommendedNews(userID uint, size int) (*RecommendedNewsResponseDTO, err
 	}
 
 	// ===== 4. 추천 후보 뉴스 조회 =====
-	candidateSize := size * 5
+	candidateSize := size * 10
 	if candidateSize < size {
 		candidateSize = size
 	}
