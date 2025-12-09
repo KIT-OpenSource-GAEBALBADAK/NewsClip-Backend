@@ -26,7 +26,7 @@ type RecommendedNewsResponseDTO struct {
 // 사용자 선호 기반 뉴스 추천 서비스
 func GetRecommendedNews(userID uint, size int) (*RecommendedNewsResponseDTO, error) {
 
-	// 🔥 기본 추천 개수 = 5개
+	// 기본 추천 개수 = 5개
 	if size <= 0 {
 		size = 5
 	}
@@ -54,7 +54,6 @@ func GetRecommendedNews(userID uint, size int) (*RecommendedNewsResponseDTO, err
 	}
 
 	// ===== 4. 추천 후보 뉴스 조회 =====
-	// 점수 계산을 위해 size보다 넉넉하게 후보군 확보
 	candidateSize := size * 5
 	if candidateSize < size {
 		candidateSize = size
@@ -63,7 +62,7 @@ func GetRecommendedNews(userID uint, size int) (*RecommendedNewsResponseDTO, err
 		candidateSize = 200
 	}
 
-	candidates, err := repositories.FindNewsCandidatesForRecommendation(userID, 30, candidateSize)
+	candidates, err := repositories.FindNewsCandidatesForRecommendation(userID, 60, candidateSize)
 	if err != nil {
 		return nil, err
 	}
@@ -84,17 +83,17 @@ func GetRecommendedNews(userID uint, size int) (*RecommendedNewsResponseDTO, err
 		category := news.Category
 		var score float64
 
-		// --- P1: 사용자 선택 선호 카테고리 (가중치 +30) ---
+		// P1: 선호 카테고리 +30
 		if preferredSet[category] {
 			score += 30.0
 		}
 
-		// --- P2: 북마크 기반 선호도 (로그 스케일) ---
+		// P2: 북마크 로그 스케일
 		if cnt, ok := bookmarkCounts[category]; ok && cnt > 0 {
 			score += 5.0 * math.Log(float64(cnt)+1.0)
 		}
 
-		// --- P3: 좋아요/싫어요 기반 선호도 (로그 스케일) ---
+		// P3: 좋아요/싫어요 로그 스케일
 		if cnt, ok := likeCounts[category]; ok && cnt > 0 {
 			score += 5.0 * math.Log(float64(cnt)+1.0)
 		}
@@ -108,7 +107,7 @@ func GetRecommendedNews(userID uint, size int) (*RecommendedNewsResponseDTO, err
 		})
 	}
 
-	// ===== 6. 점수 기준 내림차순 정렬 (동점이면 최신 기사 우선) =====
+	// ===== 6. 점수 순 정렬 (동점이면 최신 우선) =====
 	sort.Slice(scoredList, func(i, j int) bool {
 		if scoredList[i].Score == scoredList[j].Score {
 			return scoredList[i].News.PublishedAt.After(scoredList[j].News.PublishedAt)
@@ -116,15 +115,53 @@ func GetRecommendedNews(userID uint, size int) (*RecommendedNewsResponseDTO, err
 		return scoredList[i].Score > scoredList[j].Score
 	})
 
-	// 🔥 여기서 상위 N(size)개만 선택
-	if size > len(scoredList) {
-		size = len(scoredList)
-	}
-	top := scoredList[:size]
+	// ===== 7. 카테고리별 최대 N개(2개) 제한 적용 =====
+	maxPerCategory := 2
+	categoryCounter := make(map[string]int)
 
-	// ===== 7. DTO 변환 (A 형태) =====
-	items := make([]RecommendedNewsItemDTO, len(top))
-	for i, sn := range top {
+	finalList := make([]scoredNews, 0, size)
+
+	for _, item := range scoredList {
+		cat := item.News.Category
+
+		// 해당 카테고리에 이미 2개 들어갔다면 스킵
+		if categoryCounter[cat] >= maxPerCategory {
+			continue
+		}
+
+		finalList = append(finalList, item)
+		categoryCounter[cat]++
+
+		// 정해진 size만큼 채우면 종료
+		if len(finalList) >= size {
+			break
+		}
+	}
+
+	// 만약 부족하면(카테고리 제한 때문에), 다시 나머지에서 채움
+	if len(finalList) < size {
+		for _, item := range scoredList {
+			alreadyIncluded := false
+			for _, f := range finalList {
+				if f.News.ID == item.News.ID {
+					alreadyIncluded = true
+					break
+				}
+			}
+			if alreadyIncluded {
+				continue
+			}
+
+			finalList = append(finalList, item)
+			if len(finalList) >= size {
+				break
+			}
+		}
+	}
+
+	// ===== 8. DTO 변환 =====
+	items := make([]RecommendedNewsItemDTO, len(finalList))
+	for i, sn := range finalList {
 		n := sn.News
 		items[i] = RecommendedNewsItemDTO{
 			NewsID:      n.ID,
