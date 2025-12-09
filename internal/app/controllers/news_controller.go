@@ -13,51 +13,38 @@ import (
 
 // === 뉴스 목록 조회 컨트롤러 ===
 func GetNewsList(c *gin.Context) {
-	// 1. 쿼리 파라미터 파싱
-	// (카테고리가 없으면 '전체'를 기본값으로 사용)
+	// 1. 파라미터 파싱
 	category := c.DefaultQuery("category", "전체")
-
-	pageStr := c.DefaultQuery("page", "1")
-	sizeStr := c.DefaultQuery("size", "10")
-
-	page, err := strconv.Atoi(pageStr)
-	if err != nil || page < 1 {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
+	if page < 1 {
 		page = 1
 	}
-
-	size, err := strconv.Atoi(sizeStr)
-	if err != nil || size < 1 {
-		size = 10
+	if size < 1 {
+		size = 20
 	}
 
-	// 2. (선택적) 사용자 ID 가져오기 (로그인 상태일 수 있으므로)
-	// (AuthMiddlewareOptional() 같은 미들웨어가 필요하지만,
-	//  우선 GetMyProfile 등에서 사용한 'c.Get("userID")'를 사용)
-	var userID uint = 0 // 기본값 0 (비로그인)
-	if userIDValue, exists := c.Get("userID"); exists {
-		if id, ok := userIDValue.(uint); ok {
-			userID = id
-		}
-	}
+	// 2. [변경점] UserID 무조건 추출
+	// AuthMiddleware가 통과시켰으므로 userID는 반드시 존재합니다.
+	userID := c.GetUint("userID")
+	// (만약 c.GetUint 헬퍼가 없다면 기존 방식대로 c.Get("userID") 후 형변환 사용)
 
-	// 3. 서비스 호출
+	// 3. 서비스 호출 (항상 userID 전달)
 	responseDTO, err := services.GetNewsList(category, page, size, userID)
 	if err != nil {
-		utils.SendError(c, http.StatusInternalServerError, "뉴스 조회에 실패했습니다.")
+		utils.SendError(c, http.StatusInternalServerError, "뉴스 조회 실패")
 		return
 	}
 
-	// 4. 성공 응답 (API 명세서 형식에 맞게)
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
 		"message": "뉴스 목록 조회 성공",
-		"data":    responseDTO, // { "news": [...], "totalItems": ..., "totalPages": ... }
+		"data":    responseDTO,
 	})
 }
 
 // === 뉴스 상세 조회 컨트롤러 ===
 func GetNewsDetail(c *gin.Context) {
-	// 1. URL 파라미터에서 newsId 추출
 	newsIDStr := c.Param("newsId")
 	newsID64, err := strconv.ParseUint(newsIDStr, 10, 32)
 	if err != nil {
@@ -66,18 +53,12 @@ func GetNewsDetail(c *gin.Context) {
 	}
 	newsID := uint(newsID64)
 
-	// 2. (선택적) 사용자 ID 가져오기
-	var userID uint = 0
-	if userIDValue, exists := c.Get("userID"); exists {
-		if id, ok := userIDValue.(uint); ok {
-			userID = id
-		}
-	}
+	// [변경점] UserID 무조건 추출
+	userID := c.GetUint("userID")
 
-	// 3. 서비스 호출
+	// 서비스 호출
 	responseDTO, err := services.GetNewsDetail(newsID, userID)
 	if err != nil {
-		// (gorm.ErrRecordNotFound = DB에 해당 ID가 없음)
 		if err == gorm.ErrRecordNotFound {
 			utils.SendError(c, http.StatusNotFound, "해당 뉴스를 찾을 수 없습니다.")
 			return
@@ -86,7 +67,6 @@ func GetNewsDetail(c *gin.Context) {
 		return
 	}
 
-	// 4. 성공 응답
 	c.JSON(http.StatusOK, gin.H{
 		"status":  "success",
 		"message": "뉴스 본문 조회 성공",

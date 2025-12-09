@@ -211,45 +211,89 @@ type NewsListDTO struct {
 	TotalPages int           `json:"totalPages"`
 }
 
-func GetNewsList(category string, page int, size int, userID uint) (*NewsListDTO, error) {
+// === 목록 응답용 DTO 정의 ===
+type NewsResponseDTO struct {
+	models.News       // 기존 뉴스 필드 모두 포함
+	IsLiked      bool `json:"is_liked"`
+	IsDisliked   bool `json:"is_disliked"`
+	IsBookmarked bool `json:"is_bookmarked"`
+}
 
-	// 1. 레포지토리에서 데이터 조회
+type NewsListResponseDTO struct {
+	News       []NewsResponseDTO `json:"news"`
+	TotalItems int64             `json:"totalItems"`
+	TotalPages int               `json:"totalPages"`
+}
+
+// === 뉴스 목록 조회 서비스 ===
+func GetNewsList(category string, page int, size int, userID uint) (*NewsListResponseDTO, error) {
+
+	// 1. 뉴스 데이터 조회
 	newsList, totalCount, totalPages, err := repositories.GetNewsByCategory(category, page, size)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. [향후 로직 추가]
-	// if userID > 0 {
-	//    - newsList에서 newsID 목록 추출
-	//    - repositories.FindBookmarkedNewsIDs(userID, newsIDs) 호출
-	//    - DTO를 새로 정의하고(NewsItemDTO), newsList를 순회하며 'isBookmarked' 값을 채워넣기
-	// }
-
-	// 3. (현재) DTO에 담아 반환
-	response := &NewsListDTO{
-		News:       newsList,
-		TotalItems: totalCount,
-		TotalPages: totalPages,
+	// 2. 뉴스 ID 추출
+	newsIDs := make([]uint, len(newsList))
+	for i, news := range newsList {
+		newsIDs[i] = news.ID
 	}
 
-	return response, nil
+	// 3. 상호작용 및 북마크 상태 조회 (로그인 유저인 경우만)
+	// Map을 사용하여 O(1)로 조회 속도 최적화
+	interactionMap := make(map[uint]string) // newsID -> "like" or "dislike"
+	bookmarkMap := make(map[uint]bool)      // newsID -> true
+
+	if userID != 0 && len(newsIDs) > 0 {
+		// 3-1. 좋아요/싫어요 조회
+		interactions, _ := repositories.GetNewsInteractionsByIDs(userID, newsIDs)
+		for _, inter := range interactions {
+			interactionMap[inter.NewsID] = inter.InteractionType
+		}
+
+		// 3-2. 북마크 조회
+		bookmarks, _ := repositories.GetNewsBookmarksByIDs(userID, newsIDs)
+		for _, bm := range bookmarks {
+			bookmarkMap[bm.NewsID] = true
+		}
+	}
+
+	// 4. DTO 변환 및 데이터 병합
+	dtos := make([]NewsResponseDTO, len(newsList))
+	for i, news := range newsList {
+		// Map에서 상태 확인
+		interType, hasInteraction := interactionMap[news.ID]
+		isBookmarked := bookmarkMap[news.ID]
+
+		dtos[i] = NewsResponseDTO{
+			News:         news,
+			IsLiked:      hasInteraction && interType == "like",
+			IsDisliked:   hasInteraction && interType == "dislike",
+			IsBookmarked: isBookmarked,
+		}
+	}
+
+	// 5. 최종 응답 반환
+	return &NewsListResponseDTO{
+		News:       dtos,
+		TotalItems: totalCount,
+		TotalPages: totalPages,
+	}, nil
+}
+
+// === 뉴스 상세 조회 DTO (snake_case 적용) ===
+type NewsDetailDTO struct {
+	models.News
+	IsBookmarked bool `json:"is_bookmarked"` // [수정] isBookmarked -> is_bookmarked
+	IsLiked      bool `json:"is_liked"`      // [수정] isLiked -> is_liked
+	IsDisliked   bool `json:"is_disliked"`   // [수정] isDisliked -> is_disliked
 }
 
 // === 뉴스 상세 조회 서비스 ===
-// (향후 사용자별 데이터를 위해 userID도 받도록 설계)
-type NewsDetailDTO struct {
-	models.News
-	IsBookmarked bool `json:"isBookmarked"`
-	IsLiked      bool `json:"isLiked"`
-	IsDisliked   bool `json:"isDisliked"`
-}
-
 func GetNewsDetail(newsID uint, userID uint) (*NewsDetailDTO, error) {
 
 	// 1. (병렬 처리) DB에서 뉴스 정보 가져오기
-	//    (조회수 증가는 응답 속도에 영향을 주지 않도록 goroutine으로 분리)
-
 	newsChan := make(chan models.News)
 	errChan := make(chan error)
 
@@ -262,30 +306,47 @@ func GetNewsDetail(newsID uint, userID uint) (*NewsDetailDTO, error) {
 		newsChan <- news
 	}()
 
-	// 2. (백그라운드) 조회수 1 증가 (에러 나도 무시)
+	// 2. (백그라운드) 조회수 1 증가
 	go func() {
 		_ = repositories.IncrementNewsViewCount(newsID)
 	}()
 
-	// 3. [향후 로직] 사용자별 상호작용 정보 가져오기
-	//    (지금은 기본값으로 둡니다)
-	//    - go repositories.CheckBookmark(userID, newsID)
-	//    - go repositories.CheckInteraction(userID, newsID)
+	// 3. [신규 로직] 사용자별 상호작용 정보 가져오기
 	isBookmarked := false
 	isLiked := false
 	isDisliked := false
 
-	// 4. 뉴스 정보가 로드될 때까지 대기
+	// 로그인한 유저라면 DB에서 상태 조회
+	if userID != 0 {
+		// 3-1. 좋아요/싫어요 상태 확인
+		// (FindNewsInteraction은 트랜잭션 객체(*gorm.DB)를 받으므로 config.DB를 전달)
+		interaction, err := repositories.FindNewsInteraction(config.DB, userID, newsID)
+		if err == nil {
+			// 레코드가 존재하면 상태 설정
+			isLiked = (interaction.InteractionType == "like")
+			isDisliked = (interaction.InteractionType == "dislike")
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			// RecordNotFound 외의 에러는 로그를 찍거나 처리 (여기선 무시하고 false 유지)
+		}
+
+		// 3-2. 북마크 상태 확인
+		_, err = repositories.FindBookmark(userID, newsID)
+		if err == nil {
+			// 에러가 없으면 북마크가 존재하는 것
+			isBookmarked = true
+		}
+	}
+
+	// 4. 뉴스 정보 로드 대기
 	var news models.News
 	select {
 	case news = <-newsChan:
 		// 성공
 	case err := <-errChan:
-		// 실패
 		return nil, err
 	}
 
-	// 5. DTO에 담아 반환
+	// 5. DTO 반환
 	response := &NewsDetailDTO{
 		News:         news,
 		IsBookmarked: isBookmarked,
