@@ -115,8 +115,8 @@ func GetRecommendedNews(userID uint, size int) (*RecommendedNewsResponseDTO, err
 		return scoredList[i].Score > scoredList[j].Score
 	})
 
-	// ===== 7. 카테고리별 최대 N개(2개) 제한 적용 =====
-	maxPerCategory := 2
+	// ===== 7. 카테고리별 최대 N개(3개) 제한 적용 =====
+	maxPerCategory := 3
 	categoryCounter := make(map[string]int)
 
 	finalList := make([]scoredNews, 0, size)
@@ -124,7 +124,7 @@ func GetRecommendedNews(userID uint, size int) (*RecommendedNewsResponseDTO, err
 	for _, item := range scoredList {
 		cat := item.News.Category
 
-		// 해당 카테고리에 이미 2개 들어갔다면 스킵
+		// 해당 카테고리에 이미 3개 들어갔다면 스킵
 		if categoryCounter[cat] >= maxPerCategory {
 			continue
 		}
