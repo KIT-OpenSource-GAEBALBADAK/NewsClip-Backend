@@ -155,7 +155,7 @@ func DeleteBookmark(bookmark *models.NewsBookmark) error {
 	return config.DB.Delete(bookmark).Error
 }
 
-// === [신규] 사용자가 북마크한 뉴스 목록 조회 (JOIN 및 페이징) ===
+// === 사용자가 북마크한 뉴스 목록 조회 (JOIN 및 페이징) ===
 func GetBookmarkedNews(userID uint, page int, size int) ([]models.News, int64, int, error) {
 	var newsList []models.News
 	var totalCount int64
@@ -198,10 +198,10 @@ func GetBookmarkedNews(userID uint, page int, size int) ([]models.News, int64, i
 }
 
 // ====================================================================
-//  아래부터는 "뉴스 추천"을 위한 통계/후보 조회용 함수들 (신규 추가)
+//  아래부터는 "뉴스 추천"을 위한 통계/후보 조회용 함수들
 // ====================================================================
 
-// [신규] 사용자 북마크 카테고리 통계
+// 사용자 북마크 카테고리 통계
 //
 //	key: category, value: count
 func GetBookmarkCategoryStats(userID uint) (map[string]int64, error) {
@@ -230,9 +230,9 @@ func GetBookmarkCategoryStats(userID uint) (map[string]int64, error) {
 	return stats, nil
 }
 
-// [신규] 사용자 상호작용(좋아요/싫어요) 카테고리 통계
-//
-//	likeStats[category] / dislikeStats[category]
+// 사용자 상호작용(좋아요/싫어요) 카테고리 통계
+
+// likeStats[category] / dislikeStats[category]
 func GetInteractionCategoryStats(userID uint) (map[string]int64, map[string]int64, error) {
 	type resultRow struct {
 		Category        string
@@ -266,7 +266,7 @@ func GetInteractionCategoryStats(userID uint) (map[string]int64, map[string]int6
 	return likeStats, dislikeStats, nil
 }
 
-// [신규] 추천 후보 뉴스 조회
+// 추천 후보 뉴스 조회
 //   - 최근 daysWithin 일 이내
 //   - 해당 사용자가 아직 좋아요/싫어요/북마크하지 않은 뉴스만
 //   - 최신순으로 최대 limit 개
@@ -294,4 +294,19 @@ func FindNewsCandidatesForRecommendation(userID uint, daysWithin int, limit int)
 		Find(&newsList).Error
 
 	return newsList, err
+}
+
+// === 뉴스 ID 목록에 대한 좋아요/싫어요 상태 조회 (Batch Query) ===
+func GetNewsInteractionsByIDs(userID uint, newsIDs []uint) ([]models.NewsInteraction, error) {
+	var interactions []models.NewsInteraction
+	// WHERE user_id = ? AND news_id IN (?, ?, ...)
+	err := config.DB.Where("user_id = ? AND news_id IN ?", userID, newsIDs).Find(&interactions).Error
+	return interactions, err
+}
+
+// === 뉴스 ID 목록에 대한 북마크 상태 조회 (Batch Query) ===
+func GetNewsBookmarksByIDs(userID uint, newsIDs []uint) ([]models.NewsBookmark, error) {
+	var bookmarks []models.NewsBookmark
+	err := config.DB.Where("user_id = ? AND news_id IN ?", userID, newsIDs).Find(&bookmarks).Error
+	return bookmarks, err
 }

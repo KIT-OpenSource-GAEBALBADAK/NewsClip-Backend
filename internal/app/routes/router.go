@@ -45,17 +45,22 @@ func SetupRouter() *gin.Engine {
 			}
 		}
 
-		news := v1.Group("/news")
+		// --- 뉴스 (News) ---
+		news := v1.Group("/news", middlewares.AuthMiddleware())
 		{
-			news.GET("/", controllers.GetNewsList)
-			news.GET("/:newsId", controllers.GetNewsDetail)
-			news.POST("/:newsId/interact", middlewares.AuthMiddleware(), controllers.InteractNews)
-			news.POST("/:newsId/bookmark", middlewares.AuthMiddleware(), controllers.BookmarkNews)
-			news.GET("/:newsId/comments", setTarget("news"), controllers.GetComments)
-			news.POST("/:newsId/comments", middlewares.AuthMiddleware(), setTarget("news"), controllers.CreateComment)
+			// 이제 이 아래 모든 API는 토큰이 필수입니다.
 
-			// GET /v1/news/recommend?size=20
-			news.GET("/recommendations/popup", middlewares.AuthMiddleware(), controllers.GetRecommendedNews)
+			news.GET("/", controllers.GetNewsList)          // 목록 조회
+			news.GET("/:newsId", controllers.GetNewsDetail) // 본문 조회
+
+			news.POST("/:newsId/interact", controllers.InteractNews)
+			news.POST("/:newsId/bookmark", controllers.BookmarkNews)
+
+			// 댓글 관련 (이전에 설정한 setTarget 미들웨어와 함께 사용)
+			news.GET("/:newsId/comments", setTarget("news"), controllers.GetComments)
+			news.POST("/:newsId/comments", setTarget("news"), controllers.CreateComment)
+
+			news.GET("/recommendations/popup", controllers.GetRecommendedNews)
 		}
 
 		shorts := v1.Group("/shorts")
