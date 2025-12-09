@@ -97,3 +97,37 @@ func GetMyPosts(userID uint, page, size int) ([]models.Post, error) {
 
 	return posts, err
 }
+
+// === 게시글 ID 목록에 대한 좋아요/싫어요 상태 조회 (Batch Query) ===
+func GetPostInteractionsByIDs(userID uint, postIDs []uint) ([]models.PostInteraction, error) {
+	var interactions []models.PostInteraction
+	// SELECT * FROM post_interactions WHERE user_id = ? AND post_id IN (?, ?, ...)
+	err := config.DB.Where("user_id = ? AND post_id IN ?", userID, postIDs).Find(&interactions).Error
+	return interactions, err
+}
+
+// (참고: 기존 GetPostList 함수는 Service에서 호출할 때 Preload를 사용하므로 여기엔 없어도 됩니다.
+// 만약 Repository 레벨에서 목록을 가져오는 함수가 있다면 Preload("User").Preload("Images")가 포함되어야 합니다.)
+func FindPosts(category string, page, size int) ([]models.Post, int64, error) {
+	var posts []models.Post
+	var totalCount int64
+
+	query := config.DB.Model(&models.Post{})
+
+	if category != "all" && category != "전체" {
+		query = query.Where("category = ?", category)
+	}
+
+	query.Count(&totalCount)
+
+	offset := (page - 1) * size
+
+	// 작성자(User)와 이미지(Images) 정보를 함께 가져옴 (Eager Loading)
+	err := query.Preload("User").Preload("Images").
+		Order("created_at DESC").
+		Limit(size).
+		Offset(offset).
+		Find(&posts).Error
+
+	return posts, totalCount, err
+}

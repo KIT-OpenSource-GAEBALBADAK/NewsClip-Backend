@@ -25,7 +25,12 @@ func GetCommunityPosts(c *gin.Context) {
 		size = 20
 	}
 
-	response, err := services.GetCommunityPosts(postType, page, size)
+	// UserID 추출 (AuthMiddleware를 통과했다면 반드시 존재)
+	// 만약 비로그인 조회를 허용한다면 미들웨어 설정에 따라 0이 들어올 수 있음
+	userID := c.GetUint("userID")
+
+	// 서비스 호출 시 userID 전달
+	response, err := services.GetCommunityPosts(postType, page, size, userID)
 	if err != nil {
 		utils.SendError(c, http.StatusInternalServerError, "게시글 목록 조회에 실패했습니다.")
 		return

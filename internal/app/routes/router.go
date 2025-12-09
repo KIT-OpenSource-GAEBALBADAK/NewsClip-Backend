@@ -91,7 +91,7 @@ func SetupRouter() *gin.Engine {
 
 		community := v1.Group("/community")
 		{
-			community.GET("/posts", controllers.GetCommunityPosts)
+			community.GET("/posts", middlewares.AuthMiddleware(), controllers.GetCommunityPosts)
 			community.POST("/posts", middlewares.AuthMiddleware(), controllers.CreatePost)
 			community.GET("/posts/:postId/comments", setTarget("post"), controllers.GetComments)
 			community.POST("/posts/:postId/comments", middlewares.AuthMiddleware(), setTarget("post"), controllers.CreateComment)
